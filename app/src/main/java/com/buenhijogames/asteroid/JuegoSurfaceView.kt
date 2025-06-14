@@ -123,14 +123,17 @@ private class HiloJuego(
             val deltaTime = (tiempoInicioFrameNanos - ultimoTiempoNanos) / nanosPorSegundo.toFloat()
             ultimoTiempoNanos = tiempoInicioFrameNanos
 
+            // 1. Actualiza la lógica del juego (fuera de cualquier bloqueo de canvas)
+            // Evita saltos enormes si el juego se pausa y reanuda.
+            val dtCorregido = if (deltaTime > 0.5f) 1f/60f else deltaTime
+            motorJuego.tick(dtCorregido)
+
+            // 2. Dibuja el estado resultante en el canvas
             var canvas: Canvas? = null
             try {
                 canvas = surfaceHolder.lockCanvas()
                 if (canvas != null) {
                     synchronized(surfaceHolder) {
-                        // Evita saltos enormes si el juego se pausa y reanuda.
-                        val dtCorregido = if (deltaTime > 0.5f) 1f/60f else deltaTime
-                        motorJuego.tick(dtCorregido)
                         juegoSurfaceView.dibujarEnCanvas(canvas)
                     }
                 }

@@ -58,7 +58,7 @@ class EstadoJuego {
     var siguienteLatido: String = "beat1"
     var tiempoDesdeUltimoDisparo: Float = 0f
 
-    var hiScore = mutableStateOf(0 to "")
+    var listaRecords = mutableStateOf<List<PuntuacionRecord>>(listOf())
 }
 
 // Un enum más descriptivo para los estados del juego
@@ -77,6 +77,7 @@ class MotorJuego(
     // El motor tiene su propia instancia interna del estado del juego.
     val estado = EstadoJuego()
     private var tamanoCanvas: Size = Size.Zero
+    private val estadoLock = Any() // Objeto para sincronizar el acceso al estado
 
     // Listas para optimización del bucle, para no crearlas en cada tick
     private val balasAeliminar = mutableSetOf<Bala>()
@@ -85,27 +86,27 @@ class MotorJuego(
 
     // --- MÉTODOS PÚBLICOS DE CONTROL (API para la UI) ---
 
-    fun establecerLimites(width: Float, height: Float) {
+    fun establecerLimites(width: Float, height: Float) = synchronized(estadoLock) {
         tamanoCanvas = Size(width, height)
         estado.nave.posX = width / 2
         estado.nave.posY = height / 2
         inicializarNivel()
     }
 
-    fun establecerEmpujeNave(activo: Boolean) {
+    fun establecerEmpujeNave(activo: Boolean) = synchronized(estadoLock) {
         estado.acelerando = activo
     }
 
-    fun establecerRotacionNave(factor: Float) {
+    fun establecerRotacionNave(factor: Float) = synchronized(estadoLock) {
         estado.factorRotacion = factor
     }
 
-    fun disparar() {
+    fun disparar() = synchronized(estadoLock) {
         estado.disparando = true // El motor lo gestionará en el tick
     }
     
-    fun ejecutarHiperespacio() {
-        if (estado.nave.esInvulnerable) return
+    fun ejecutarHiperespacio() = synchronized(estadoLock) {
+        if (estado.nave.esInvulnerable) return@synchronized
         estado.nave.posX = Random.nextFloat() * tamanoCanvas.width
         estado.nave.posY = Random.nextFloat() * tamanoCanvas.height
         estado.nave.velX = 0f
@@ -119,10 +120,10 @@ class MotorJuego(
     
     fun iniciar() {
         gestorSonido.cargarSonidos()
-        estado.hiScore.value = gestorPuntuacion.cargarPuntuacion()
+        estado.listaRecords.value = gestorPuntuacion.cargarPuntuaciones()
     }
 
-    fun reiniciarJuego() {
+    fun reiniciarJuego() = synchronized(estadoLock) {
         estado.nivel.value = 1
         estado.vidas.value = 3
         estado.puntuacion.value = 0
@@ -136,14 +137,25 @@ class MotorJuego(
         gestorSonido.liberarRecursos()
     }
     
-    fun guardarNuevoRecord(iniciales: String) {
-        gestorPuntuacion.guardarPuntuacion(estado.puntuacion.value, iniciales)
-        estado.hiScore.value = estado.puntuacion.value to iniciales
-        estado.estadoActual.value = EstadoJuegoEnum.GAME_OVER
+    fun guardarNuevoRecord(iniciales: String) = synchronized(estadoLock) {
+        val nuevaLista = estado.listaRecords.value.toMutableList()
+        nuevaLista.add(PuntuacionRecord(iniciales = iniciales, puntos = estado.puntuacion.value))
+        // Ordena la lista de mayor a menor puntuación y coge los 30 primeros.
+        val listaOrdenada = nuevaLista.sortedByDescending { it.puntos }.take(30)
+        gestorPuntuacion.guardarPuntuaciones(listaOrdenada)
+        estado.listaRecords.value = listaOrdenada
+        estado.estadoActual.value = EstadoJuegoEnum.GAME_OVER // Vuelve a la pantalla de Game Over
+    }
+
+    private fun esPuntuacionDeRecord(puntuacion: Int): Boolean {
+        val records = estado.listaRecords.value
+        // Hay hueco si la lista no está llena (menos de 30) o si la puntuación
+        // es mayor que la más baja de la lista.
+        return records.size < 30 || puntuacion > (records.lastOrNull()?.puntos ?: 0)
     }
 
     // Este es el corazón del motor. Se llamará en cada fotograma.
-    fun tick(deltaTime: Float) {
+    fun tick(deltaTime: Float) = synchronized(estadoLock) {
         if (estado.estadoActual.value != EstadoJuegoEnum.JUGANDO) {
             // Si no estamos jugando, nos aseguramos de que el disparo se desactive
             // para no procesar un disparo pendiente al reiniciar.
@@ -341,35 +353,50 @@ class MotorJuego(
             for (asteroide in estado.asteroides) {
                 if (asteroidesAeliminar.contains(asteroide)) continue
                 if (hayColisionNaveAsteroide(estado.nave, asteroide)) {
-                    naveDestruida = true; break
+                    if (!estado.nave.esInvulnerable) {
+                        estado.nave.esInvulnerable = true
+                        estado.nave.tiempoInvulnerableRestante = TIEMPO_INVULNERABLE_SEGUNDOS
+                        estado.vidas.value--
+                        gestorSonido.reproducirExplosion()
+                        if (estado.vidas.value <= 0) {
+                            if (esPuntuacionDeRecord(estado.puntuacion.value)) {
+                                estado.estadoActual.value = EstadoJuegoEnum.NUEVO_RECORD
+                            } else {
+                                estado.estadoActual.value = EstadoJuegoEnum.GAME_OVER
+                            }
+                        }
+                    }
+                    asteroidesAeliminar.add(asteroide)
+                    break
                 }
             }
             if (!naveDestruida) {
                 for (bala in estado.balas) {
                     if (balasAeliminar.contains(bala)) continue
                     if (bala.origen == OrigenBala.OVNI && hayColision(estado.nave.posX, estado.nave.posY, RADIO_NAVE, bala.posX, bala.posY, bala.radio)) {
-                        naveDestruida = true; balasAeliminar.add(bala); break
+                        estado.nave.esInvulnerable = true
+                        estado.nave.tiempoInvulnerableRestante = TIEMPO_INVULNERABLE_SEGUNDOS
+                        estado.vidas.value--
+                        gestorSonido.reproducirExplosion()
+                        balasAeliminar.add(bala)
+                        if (estado.vidas.value <= 0) {
+                            if (esPuntuacionDeRecord(estado.puntuacion.value)) {
+                                estado.estadoActual.value = EstadoJuegoEnum.NUEVO_RECORD
+                            } else {
+                                estado.estadoActual.value = EstadoJuegoEnum.GAME_OVER
+                            }
+                        }
+                        break
                     }
                 }
             }
             if (!naveDestruida) {
                 estado.ovni?.let { o ->
                     if (hayColision(estado.nave.posX, estado.nave.posY, RADIO_NAVE, o.posX, o.posY, o.radio)) {
-                        naveDestruida = true; estado.ovni = null; gestorSonido.reproducirExplosion()
+                        estado.ovni = null
+                        gestorSonido.reproducirExplosion()
                     }
                 }
-            }
-        }
-
-        if (naveDestruida) {
-            estado.vidas.value--
-            gestorSonido.reproducirExplosion()
-            if (estado.vidas.value <= 0) {
-                estado.estadoActual.value = if (estado.puntuacion.value > estado.hiScore.value.first) EstadoJuegoEnum.NUEVO_RECORD else EstadoJuegoEnum.GAME_OVER
-            } else {
-                reiniciarPosicionNave()
-                estado.nave.tiempoInvulnerableRestante = TIEMPO_INVULNERABLE_SEGUNDOS
-                estado.nave.esInvulnerable = true
             }
         }
 

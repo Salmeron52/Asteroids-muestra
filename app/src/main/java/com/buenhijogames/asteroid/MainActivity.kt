@@ -52,6 +52,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,6 +68,15 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalDensity
+import androidx.core.view.WindowCompat
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 
 // Las constantes de jugabilidad se han movido a su propio archivo: Constantes.kt
 // Ya no son necesarias aquí.
@@ -152,6 +162,8 @@ enum class EstadoJuego {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Hacemos que la app se dibuje a pantalla completa (edge-to-edge)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             AsteroidTheme {
                 Surface(
@@ -175,6 +187,8 @@ fun PantallaJuego() {
     }
     val estadoUI = motorJuego.estado
 
+    var mostrandoRecords by remember { mutableStateOf(false) }
+
     DisposableEffect(Unit) {
         motorJuego.iniciar()
         onDispose {
@@ -183,7 +197,12 @@ fun PantallaJuego() {
     }
     
     // La UI vuelve a estar contenida en un BoxWithConstraints para calcular el aspect ratio
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            // Añadimos un padding que respeta el espacio de la barra de estado.
+            .statusBarsPadding()
+    ) {
         val gameHeight = this.maxHeight
         val gameWidth = this.maxWidth
         val ratio = 4f / 3f
@@ -209,6 +228,7 @@ fun PantallaJuego() {
             // --- Panel de Control Izquierdo ---
             PanelControlIzquierdo(
                 modifier = Modifier.width(controlPanelWidth).fillMaxHeight(),
+                puntuacion = estadoUI.puntuacion.value,
                 onGiroChanged = onGiroChanged,
                 onHiperespacio = onHiperespacio
             )
@@ -234,29 +254,83 @@ fun PantallaJuego() {
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // La UI de información (puntuación, vidas, nivel) se superpone al juego.
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("Puntuación: ${estadoUI.puntuacion.value}", color = Color.White, fontSize = 20.sp)
-                    Text("Nivel: ${estadoUI.nivel.value}", color = Color.White, fontSize = 20.sp)
-                    Text("Vidas: ${estadoUI.vidas.value}", color = Color.White, fontSize = 20.sp)
-                    if (estadoUI.estadoActual.value == EstadoJuegoEnum.GAME_OVER) {
-                        Text("GAME OVER", color = Color.Red, fontSize = 48.sp, fontWeight = FontWeight.Bold)
+                // Superposición (Overlay) para el estado de GAME OVER o NUEVO_RECORD
+                when (estadoUI.estadoActual.value) {
+                    EstadoJuegoEnum.GAME_OVER -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(text = "GAME OVER", color = Color.Red, fontSize = 48.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Row {
+                                    BotonControl(
+                                        texto = "REINICIAR",
+                                        onPress = { motorJuego.reiniciarJuego() },
+                                        onRelease = { }
+                                    )
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    BotonControl(
+                                        texto = "RÉCORDS",
+                                        onPress = { mostrandoRecords = true },
+                                        onRelease = { }
+                                    )
+                                }
+                            }
+                        }
                     }
+                    EstadoJuegoEnum.NUEVO_RECORD -> {
+                        var iniciales by remember { mutableStateOf(TextFieldValue("")) }
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.background(Color.Black.copy(alpha = 0.7f)).padding(16.dp)) {
+                                Text("¡NUEVO RÉCORD!", color = Color.Yellow, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("${estadoUI.puntuacion.value}", color = Color.White, fontSize = 28.sp)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                TextField(
+                                    value = iniciales,
+                                    onValueChange = {
+                                        if (it.text.length <= 3) iniciales = it
+                                    },
+                                    label = { Text("Tus iniciales") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                BotonControl(
+                                    texto = "GUARDAR",
+                                    onPress = {
+                                        motorJuego.guardarNuevoRecord(iniciales.text.uppercase())
+                                    },
+                                    onRelease = {}
+                                )
+                            }
+                        }
+                    }
+                    else -> { /* No se muestra nada si está JUGANDO */ }
                 }
             }
 
             // --- Panel de Control Derecho ---
             PanelControlDerecho(
                 modifier = Modifier.width(controlPanelWidth).fillMaxHeight(),
+                vidas = estadoUI.vidas.value,
                 onEmpujeChanged = onEmpujeChanged,
                 onDisparo = onDisparo
             )
         }
+    }
+
+    if (mostrandoRecords) {
+        PantallaRecords(
+            records = estadoUI.listaRecords.value,
+            onCerrar = { mostrandoRecords = false }
+        )
     }
 }
 
@@ -371,7 +445,12 @@ fun BotonControl(
             .background(Color.Gray.copy(alpha = 0.2f), shape = CircleShape)
             .border(2.dp, Color.White, CircleShape)
     ) {
-        Text(text = texto, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            text = texto,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -445,50 +524,139 @@ fun VistaPreviaPantallaJuego() {
 @Composable
 fun PanelControlIzquierdo(
     modifier: Modifier = Modifier,
+    puntuacion: Int,
     onGiroChanged: (Float) -> Unit,
     onHiperespacio: () -> Unit
 ) {
-    // Usamos una Columna para apilar los controles verticalmente.
     Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+        modifier = modifier.fillMaxSize().padding(vertical = 16.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        ZonaControlRotacion(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            onRotate = onGiroChanged
+        Text(
+            text = puntuacion.toString(),
+            color = Color.White,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold
         )
-        Spacer(modifier = Modifier.height(20.dp))
-        Button(onClick = onHiperespacio) {
-            Text("HIPER")
+        
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            BotonControl(
+                texto = "HIPER\nESPACIO",
+                onPress = onHiperespacio,
+                onRelease = { /* No es una acción continua, no hace nada al soltar */ }
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            ZonaControlRotacion(
+                modifier = Modifier.fillMaxWidth().height(150.dp),
+                onRotate = onGiroChanged
+            )
         }
-        Spacer(modifier = Modifier.height(20.dp))
     }
 }
 
 @Composable
 fun PanelControlDerecho(
     modifier: Modifier = Modifier,
+    vidas: Int,
     onEmpujeChanged: (Boolean) -> Unit,
     onDisparo: () -> Unit
 ) {
-    // Usamos una Columna para apilar los controles verticalmente.
     Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+        modifier = modifier.fillMaxSize().padding(vertical = 16.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween // Distribuye el espacio
     ) {
-        BotonControl(
-            texto = "ACELERAR",
-            onPress = { onEmpujeChanged(true) },
-            onRelease = { onEmpujeChanged(false) }
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        BotonControl(
-            texto = "DISPARAR",
-            onPress = onDisparo,
-            onRelease = { /* No hace nada al soltar */ }
-        )
+        Row {
+            val pathVida = remember {
+                Path().apply {
+                    moveTo(0f, -15f)
+                    lineTo(-10f, 10f)
+                    lineTo(10f, 10f)
+                    close()
+                }
+            }
+            repeat(vidas.coerceAtLeast(0)) {
+                Canvas(modifier = Modifier.size(25.dp).padding(horizontal = 2.dp)) {
+                    translate(left = center.x, top = center.y) {
+                        drawPath(pathVida, color = Color.White, style = Stroke(3f))
+                    }
+                }
+            }
+        }
+        
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            BotonControl(
+                texto = "ACELERAR",
+                onPress = { onEmpujeChanged(true) },
+                onRelease = { onEmpujeChanged(false) }
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            BotonControl(
+                texto = "DISPARAR",
+                onPress = onDisparo,
+                onRelease = { /* No hace nada al soltar */ }
+            )
+        }
+    }
+}
+
+@Composable
+fun PantallaRecords(
+    records: List<PuntuacionRecord>,
+    onCerrar: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.9f))
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("MEJORES PUNTUACIONES", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.Yellow)
+            Spacer(modifier = Modifier.height(16.dp))
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                itemsIndexed(records) { index, record ->
+                    Row(
+                        modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Usamos pesos para crear un sistema de columnas y alinear el texto.
+                        Text(
+                            text = "${index + 1}.",
+                            modifier = Modifier.weight(0.2f),
+                            textAlign = TextAlign.End,
+                            fontSize = 20.sp,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = record.iniciales,
+                            modifier = Modifier.weight(0.5f),
+                            textAlign = TextAlign.Center,
+                            fontSize = 20.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = record.puntos.toString(),
+                            modifier = Modifier.weight(0.5f),
+                            textAlign = TextAlign.Start,
+                            fontSize = 20.sp,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            BotonControl(texto = "CERRAR", onPress = onCerrar, onRelease = {})
+        }
     }
 }
 
