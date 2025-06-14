@@ -27,6 +27,13 @@ class JuegoSurfaceView(context: Context, private val motorJuego: MotorJuego) : S
         isAntiAlias = true
     }
 
+    private val pathNave = Path().apply {
+        moveTo(0f, -25f)
+        lineTo(-15f, 15f)
+        lineTo(15f, 15f)
+        close()
+    }
+
     init {
         holder.addCallback(this)
     }
@@ -84,12 +91,6 @@ class JuegoSurfaceView(context: Context, private val motorJuego: MotorJuego) : S
         if (estadoUI.vidas.value > 0) {
             val esVisible = if (estadoUI.nave.esInvulnerable) (System.currentTimeMillis() / 200) % 2 == 0L else true
             if (esVisible) {
-                val pathNave = Path().apply {
-                    moveTo(0f, -25f)
-                    lineTo(-15f, 15f)
-                    lineTo(15f, 15f)
-                    close()
-                }
                 canvas.save()
                 canvas.translate(estadoUI.nave.posX, estadoUI.nave.posY)
                 canvas.rotate(estadoUI.nave.angulo)

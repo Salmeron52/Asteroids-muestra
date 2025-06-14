@@ -277,10 +277,13 @@ class MotorJuego(
                 estado.tiempoParaSiguienteOvni -= deltaTime
             } else {
                 val aparecePorIzquierda = Random.nextBoolean()
+                val velocidadBaseOvni = (if (aparecePorIzquierda) (MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO * 0.8f) else -(MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO * 0.8f))
+                val velocidadOvniAjustada = velocidadBaseOvni * (1 + estado.nivel.value * FACTOR_VELOCIDAD_OVNI_POR_NIVEL)
+
                 estado.ovni = Ovni(
                     posX = if (aparecePorIzquierda) -30f else tamanoCanvas.width + 30f,
                     posY = Random.nextFloat() * tamanoCanvas.height * 0.8f,
-                    velX = (if (aparecePorIzquierda) (MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO * 0.8f) else -(MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO * 0.8f)) * (1 + estado.nivel.value * 0.1f)
+                    velX = velocidadOvniAjustada
                 )
                 estado.tiempoParaSiguienteOvni = Random.nextDouble(8.0, 15.0).toFloat()
             }
@@ -414,11 +417,16 @@ class MotorJuego(
     }
 
     fun inicializarNivel() {
-        reiniciarPosicionNave()
         estado.asteroides.clear()
-        estado.asteroides.addAll(crearAsteroidesIniciales(5 + estado.nivel.value - 1, tamanoCanvas))
         estado.balas.clear()
         estado.ovni = null
+        reiniciarPosicionNave()
+
+        // Usamos la nueva fórmula de dificultad.
+        val numAsteroides = ASTEROIDES_INICIALES + (estado.nivel.value - 1) * INCREMENTO_ASTEROIDES_POR_NIVEL
+        repeat(numAsteroides) {
+            estado.asteroides.add(crearAsteroideBorde(tamanoCanvas))
+        }
     }
 
     fun reiniciarPosicionNave() {
@@ -453,23 +461,45 @@ private fun generarFormaAsteroide(radio: Float, irregularidad: Float = 0.4f): Pa
 }
 
 private fun crearAsteroidesIniciales(cantidad: Int, tamanoCanvas: Size): List<Asteroide> {
+    // Esta función ahora está en desuso, pero la mantenemos por si la necesitamos en el futuro.
     val asteroides = mutableListOf<Asteroide>()
     for (i in 0 until cantidad) {
-        val tamano = TamanoAsteroide.GRANDE
-        val posX: Float; val posY: Float
-        if (Random.nextBoolean()) {
-            posX = if (Random.nextBoolean()) -tamano.radio else tamanoCanvas.width + tamano.radio
-            posY = Random.nextFloat() * tamanoCanvas.height
-        } else {
-            posX = Random.nextFloat() * tamanoCanvas.width
-            posY = if (Random.nextBoolean()) -tamano.radio else tamanoCanvas.height + tamano.radio
-        }
-        val angulo = Random.nextFloat() * 2 * PI.toFloat()
-        val velocidad = MIN_VELOCIDAD_ASTEROIDE_POR_SEGUNDO + Random.nextFloat() * (MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO - MIN_VELOCIDAD_ASTEROIDE_POR_SEGUNDO)
-        val (path, vertices) = generarFormaAsteroide(tamano.radio)
-        asteroides.add(Asteroide(posX, posY, cos(angulo) * velocidad, sin(angulo) * velocidad, tamano, path, vertices))
+        asteroides.add(crearAsteroideBorde(tamanoCanvas))
     }
     return asteroides
+}
+
+private fun crearAsteroideBorde(tamanoCanvas: Size = Size(800f, 600f) /* Valor por defecto seguro */ ): Asteroide {
+    val tamano = TamanoAsteroide.GRANDE
+    val posX: Float
+    val posY: Float
+
+    if (Random.nextBoolean()) {
+        // Aparece en los bordes izquierdo o derecho
+        posX = if (Random.nextBoolean()) -tamano.radio else tamanoCanvas.width + tamano.radio
+        posY = Random.nextFloat() * tamanoCanvas.height
+    } else {
+        // Aparece en los bordes superior o inferior
+        posX = Random.nextFloat() * tamanoCanvas.width
+        posY = if (Random.nextBoolean()) -tamano.radio else tamanoCanvas.height + tamano.radio
+    }
+
+    val anguloHaciaElCentro = atan2((tamanoCanvas.height / 2f) - posY, (tamanoCanvas.width / 2f) - posX)
+    // Añadimos una pequeña desviación al ángulo para que no todos vayan al centro exacto.
+    val anguloFinal = anguloHaciaElCentro + Random.nextDouble(-0.5, 0.5).toFloat()
+
+    val velocidad = MIN_VELOCIDAD_ASTEROIDE_POR_SEGUNDO + Random.nextFloat() * (MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO - MIN_VELOCIDAD_ASTEROIDE_POR_SEGUNDO)
+    val (path, vertices) = generarFormaAsteroide(tamano.radio)
+
+    return Asteroide(
+        posX,
+        posY,
+        cos(anguloFinal) * velocidad,
+        sin(anguloFinal) * velocidad,
+        tamano,
+        path,
+        vertices
+    )
 }
 
 private fun crearAsteroideFragmento(asteroidePadre: Asteroide, nuevoTamano: TamanoAsteroide): Asteroide {
