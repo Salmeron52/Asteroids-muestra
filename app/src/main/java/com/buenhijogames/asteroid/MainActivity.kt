@@ -264,7 +264,7 @@ fun PantallaJuego() {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(text = "GAME OVER", color = Color.Red, fontSize = 48.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(text = "Asteroid by buenhijoGames", color = Color.White, fontSize = 16.sp)
+                                Text(text = "Asteroids by buenhijoGames", color = Color.White, fontSize = 16.sp)
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Row {
                                     BotonControl(
