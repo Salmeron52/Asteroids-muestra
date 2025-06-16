@@ -20,63 +20,48 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.buenhijogames.asteroid.ui.theme.AsteroidTheme
-import kotlinx.coroutines.delay
-import kotlin.math.PI
-import kotlin.math.atan2
-import kotlin.math.ceil
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
-import kotlin.random.Random
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.platform.LocalDensity
 import androidx.core.view.WindowCompat
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.TextFieldValue
-import kotlinx.coroutines.launch
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import com.buenhijogames.asteroid.ui.theme.AsteroidTheme
+import kotlin.random.Random
 
 // Las constantes de jugabilidad se han movido a su propio archivo: Constantes.kt
 // Ya no son necesarias aquí.
@@ -107,7 +92,7 @@ data class Bala(
     var velY: Float,
     val origen: OrigenBala,
     var vidaUtil: Int = 100,
-    val radio: Float = 5f
+    val radio: Float = 5f,
 )
 
 /**
@@ -132,20 +117,34 @@ data class Asteroide(
     val path: Path,
     val vertices: List<Offset>,
     var rotacion: Float = 0f,
-    val velocidadRotacion: Float = Random.nextFloat() * 2f - 1f
+    val velocidadRotacion: Float = Random.nextFloat() * 2f - 1f,
 )
 
 /**
+ * Enum para representar los tipos de OVNI disponibles.
+ * En el juego original Asteroids había dos tipos con características diferentes.
+ */
+enum class TipoOvni(val radio: Float, val puntos: Int, val sonido: String) {
+    PEQUENO(25f, 1000, "ovni_pequeno"),  // OVNI pequeño: más rápido, más puntos, sonido agudo
+    GRANDE(40f, 500, "ovni_grande")      // OVNI grande: más lento, menos puntos, sonido grave
+}
+
+/**
  * Data class para representar un OVNI.
+ * Ahora incluye el tipo de OVNI que determina su tamaño, puntos y sonido.
  */
 data class Ovni(
     var posX: Float,
     var posY: Float,
     val velX: Float,
-    val radio: Float = 30f,
-    val puntos: Int = 200,
-    var tiempoParaDisparo: Float = Random.nextFloat() * 3f + 2f // Tiempo inicial en segundos
-)
+    val tipo: TipoOvni,
+    var tiempoParaDisparo: Float = Random.nextFloat() * 3f + 2f, // Tiempo inicial en segundos
+) {
+    // Propiedades derivadas del tipo de OVNI
+    val radio: Float get() = tipo.radio
+    val puntos: Int get() = tipo.puntos
+    val sonido: String get() = tipo.sonido
+}
 
 /**
  * Enum para controlar el estado actual del juego.
@@ -195,7 +194,7 @@ fun PantallaJuego() {
             motorJuego.liberarRecursos()
         }
     }
-    
+
     // La UI vuelve a estar contenida en un BoxWithConstraints para calcular el aspect ratio
     BoxWithConstraints(
         modifier = Modifier
@@ -216,7 +215,8 @@ fun PantallaJuego() {
 
         val onHiperespacio: () -> Unit = { motorJuego.ejecutarHiperespacio() }
         val onDisparo: () -> Unit = { motorJuego.disparar() }
-        val onGiroChanged: (Float) -> Unit = { nuevoAngulo -> motorJuego.establecerRotacionNave(nuevoAngulo) }
+        val onGiroChanged: (Float) -> Unit =
+            { nuevoAngulo -> motorJuego.establecerRotacionNave(nuevoAngulo) }
         val onEmpujeChanged: (Boolean) -> Unit = { motorJuego.establecerEmpujeNave(it) }
 
         // El layout principal es una Fila (Row) con los paneles a los lados y el juego en el centro.
@@ -227,7 +227,9 @@ fun PantallaJuego() {
         ) {
             // --- Panel de Control Izquierdo ---
             PanelControlIzquierdo(
-                modifier = Modifier.width(controlPanelWidth).fillMaxHeight(),
+                modifier = Modifier
+                    .width(controlPanelWidth)
+                    .fillMaxHeight(),
                 puntuacion = estadoUI.puntuacion.value,
                 onGiroChanged = onGiroChanged,
                 onHiperespacio = onHiperespacio
@@ -254,6 +256,70 @@ fun PantallaJuego() {
                     modifier = Modifier.fillMaxSize()
                 )
 
+                // Superposición de información del juego (record y nivel) - Solo durante el juego
+                if (estadoUI.estadoActual.value == EstadoJuegoEnum.JUGANDO) {
+                    // Obtenemos el record máximo actual para mostrarlo
+                    val recordMaximo = motorJuego.obtenerRecordMaximo()
+
+                    // Información en la parte superior de la pantalla de juego
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        // Record en la parte superior izquierda
+                        Text(
+                            text = "RECORD $recordMaximo",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .background(
+                                    Color.Black.copy(alpha = 0.5f),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+
+                        // Nivel en la parte superior derecha
+                        Text(
+                            text = "NIVEL ${estadoUI.nivel.value}",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .background(
+                                    Color.Black.copy(alpha = 0.5f),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    // Indicación de pausa en el centro de la pantalla
+                    if (estadoUI.enPausa.value) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "PAUSA",
+                                color = Color.White,
+                                fontSize = 48.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .background(
+                                        Color.Black.copy(alpha = 0.7f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(24.dp)
+                            )
+                        }
+                    }
+                }
+
                 // Superposición (Overlay) para el estado de GAME OVER o NUEVO_RECORD
                 when (estadoUI.estadoActual.value) {
                     EstadoJuegoEnum.GAME_OVER -> {
@@ -262,9 +328,18 @@ fun PantallaJuego() {
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(text = "GAME OVER", color = Color.Red, fontSize = 48.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = "GAME OVER",
+                                    color = Color.White,
+                                    fontSize = 48.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(text = "Asteroids by buenhijoGames", color = Color.White, fontSize = 16.sp)
+                                Text(
+                                    text = "Asteroids by buenhijoGames",
+                                    color = Color.White,
+                                    fontSize = 24.sp
+                                )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Row {
                                     BotonControl(
@@ -282,17 +357,31 @@ fun PantallaJuego() {
                             }
                         }
                     }
+
                     EstadoJuegoEnum.NUEVO_RECORD -> {
                         var iniciales by remember { mutableStateOf(TextFieldValue("")) }
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.background(Color.Black.copy(alpha = 0.7f)).padding(16.dp)) {
-                                Text("¡NUEVO RÉCORD!", color = Color.Yellow, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .background(Color.Black.copy(alpha = 0.7f))
+                                    .padding(16.dp)
+                            ) {
+                                Text(
+                                    "¡NUEVO RÉCORD!",
+                                    color = Color.White,
+                                    fontSize = 36.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("${estadoUI.puntuacion.value}", color = Color.White, fontSize = 28.sp)
+                                Text(
+                                    "${estadoUI.puntuacion.value}",
+                                    color = Color.White,
+                                    fontSize = 28.sp
+                                )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 TextField(
                                     value = iniciales,
@@ -314,16 +403,22 @@ fun PantallaJuego() {
                             }
                         }
                     }
-                    else -> { /* No se muestra nada si está JUGANDO */ }
+
+                    else -> { /* No se muestra nada si está JUGANDO */
+                    }
                 }
             }
 
             // --- Panel de Control Derecho ---
             PanelControlDerecho(
-                modifier = Modifier.width(controlPanelWidth).fillMaxHeight(),
+                modifier = Modifier
+                    .width(controlPanelWidth)
+                    .fillMaxHeight(),
                 vidas = estadoUI.vidas.value,
+                enPausa = estadoUI.enPausa.value,
                 onEmpujeChanged = onEmpujeChanged,
-                onDisparo = onDisparo
+                onDisparo = onDisparo,
+                onPausa = { motorJuego.alternarPausa() }
             )
         }
     }
@@ -348,7 +443,7 @@ fun PantallaJuego() {
 @Composable
 fun ZonaControlRotacion(
     modifier: Modifier = Modifier,
-    onRotate: (factor: Float) -> Unit
+    onRotate: (factor: Float) -> Unit,
 ) {
     var posicionInicial by remember { mutableStateOf(Offset.Zero) }
     var posicionActual by remember { mutableStateOf(Offset.Zero) }
@@ -412,7 +507,12 @@ fun ZonaControlRotacion(
             }
         } else {
             // Texto indicativo cuando la zona no está en uso.
-            Text(text = "GIRAR", color = Color.White.copy(alpha = 0.5f), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(
+                text = "GIRAR",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -426,7 +526,7 @@ fun BotonControl(
     texto: String,
     onPress: () -> Unit,
     onRelease: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Box(
         contentAlignment = Alignment.Center,
@@ -470,7 +570,7 @@ fun BotonPulsacionLarga(
     texto: String,
     onPress: () -> Unit,
     onRelease: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
@@ -528,10 +628,12 @@ fun PanelControlIzquierdo(
     modifier: Modifier = Modifier,
     puntuacion: Int,
     onGiroChanged: (Float) -> Unit,
-    onHiperespacio: () -> Unit
+    onHiperespacio: () -> Unit,
 ) {
     Column(
-        modifier = modifier.fillMaxSize().padding(vertical = 16.dp, horizontal = 4.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(vertical = 16.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
@@ -541,7 +643,7 @@ fun PanelControlIzquierdo(
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold
         )
-        
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -553,7 +655,9 @@ fun PanelControlIzquierdo(
             )
             Spacer(modifier = Modifier.height(20.dp))
             ZonaControlRotacion(
-                modifier = Modifier.fillMaxWidth().height(150.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp),
                 onRotate = onGiroChanged
             )
         }
@@ -564,36 +668,58 @@ fun PanelControlIzquierdo(
 fun PanelControlDerecho(
     modifier: Modifier = Modifier,
     vidas: Int,
+    enPausa: Boolean,
     onEmpujeChanged: (Boolean) -> Unit,
-    onDisparo: () -> Unit
+    onDisparo: () -> Unit,
+    onPausa: () -> Unit,
 ) {
     Column(
-        modifier = modifier.fillMaxSize().padding(vertical = 16.dp, horizontal = 4.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(vertical = 16.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween // Distribuye el espacio
     ) {
         Row {
             val pathVida = remember {
                 Path().apply {
-                    moveTo(0f, -15f)
-                    lineTo(-10f, 10f)
-                    lineTo(10f, 10f)
+                    moveTo(0f, -25f)
+                    lineTo(-18f, 18f)
+                    lineTo(18f, 18f)
                     close()
                 }
             }
             repeat(vidas.coerceAtLeast(0)) {
-                Canvas(modifier = Modifier.size(25.dp).padding(horizontal = 2.dp)) {
+                Canvas(
+                    modifier = Modifier
+                        .size(45.dp)
+                        .padding(horizontal = 3.dp)
+                ) {
                     translate(left = center.x, top = center.y) {
-                        drawPath(pathVida, color = Color.White, style = Stroke(3f))
+                        drawPath(pathVida, color = Color.White, style = Stroke(4f))
                     }
                 }
             }
         }
-        
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Botón de pausa - Solo icono, encima del botón de acelerar
+            IconButton(
+                onClick = onPausa
+            ) {
+                Icon(
+                    painter = painterResource(
+                        id = if (enPausa) R.drawable.play_arrow_ico else R.drawable.pause_ico
+                    ),
+                    contentDescription = if (enPausa) "Reanudar" else "Pausar",
+                    tint = Color.White,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
             BotonControl(
                 texto = "ACELERAR",
                 onPress = { onEmpujeChanged(true) },
@@ -612,7 +738,7 @@ fun PanelControlDerecho(
 @Composable
 fun PantallaRecords(
     records: List<PuntuacionRecord>,
-    onCerrar: () -> Unit
+    onCerrar: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -622,12 +748,23 @@ fun PantallaRecords(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("MEJORES PUNTUACIONES", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.Yellow)
+            Text(
+                "MEJORES PUNTUACIONES",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Yellow
+            )
             Spacer(modifier = Modifier.height(16.dp))
-            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
                 itemsIndexed(records) { index, record ->
                     Row(
-                        modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
+                        modifier = Modifier
+                            .padding(vertical = 4.dp)
+                            .fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Usamos pesos para crear un sistema de columnas y alinear el texto.

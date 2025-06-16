@@ -26,7 +26,7 @@ data class EstadoNave(
     var velY: Float = 0f,
     var angulo: Float = 0f,
     var esInvulnerable: Boolean = false,
-    var tiempoInvulnerableRestante: Float = 0f
+    var tiempoInvulnerableRestante: Float = 0f,
 )
 
 // Reutilizamos las data classes existentes (Bala, Asteroide, Ovni) ya que sus propiedades
@@ -46,6 +46,7 @@ class EstadoJuego {
     var vidas = mutableStateOf(3)
     var nivel = mutableStateOf(1)
     var estadoActual = mutableStateOf(EstadoJuegoEnum.JUGANDO) // Usaremos un enum más explícito
+    var enPausa = mutableStateOf(false) // Estado de pausa del juego
 
     // Variables de control del jugador (entradas)
     var factorRotacion: Float = 0f
@@ -72,7 +73,7 @@ enum class EstadoJuegoEnum {
 // La clase principal que contiene toda la lógica.
 class MotorJuego(
     private val gestorSonido: GestorSonido,
-    private val gestorPuntuacion: GestorPuntuacion
+    private val gestorPuntuacion: GestorPuntuacion,
 ) {
     // El motor tiene su propia instancia interna del estado del juego.
     val estado = EstadoJuego()
@@ -104,7 +105,7 @@ class MotorJuego(
     fun disparar() = synchronized(estadoLock) {
         estado.disparando = true // El motor lo gestionará en el tick
     }
-    
+
     fun ejecutarHiperespacio() = synchronized(estadoLock) {
         if (estado.nave.esInvulnerable) return@synchronized
         estado.nave.posX = Random.nextFloat() * tamanoCanvas.width
@@ -113,11 +114,11 @@ class MotorJuego(
         estado.nave.velY = 0f
         estado.nave.tiempoInvulnerableRestante = TIEMPO_INVULNERABLE_SEGUNDOS
         estado.nave.esInvulnerable = true
-        gestorSonido.reproducirSonido("hyperspace_enter")
+        // TODO: Añadir sonido del hiperespacio en el futuro
     }
 
     // --- MÉTODOS DEL CICLO DE VIDA ---
-    
+
     fun iniciar() {
         gestorSonido.cargarSonidos()
         estado.listaRecords.value = gestorPuntuacion.cargarPuntuaciones()
@@ -130,13 +131,14 @@ class MotorJuego(
         estado.nave.esInvulnerable = false
         estado.nave.tiempoInvulnerableRestante = 0f
         estado.estadoActual.value = EstadoJuegoEnum.JUGANDO
+        estado.enPausa.value = false // Asegurar que el juego no esté en pausa al reiniciar
         inicializarNivel()
     }
-    
+
     fun liberarRecursos() {
         gestorSonido.liberarRecursos()
     }
-    
+
     fun guardarNuevoRecord(iniciales: String) = synchronized(estadoLock) {
         val nuevaLista = estado.listaRecords.value.toMutableList()
         nuevaLista.add(PuntuacionRecord(iniciales = iniciales, puntos = estado.puntuacion.value))
@@ -154,12 +156,33 @@ class MotorJuego(
         return records.size < 30 || puntuacion > (records.lastOrNull()?.puntos ?: 0)
     }
 
+    /**
+     * Obtiene la puntuación más alta registrada (el record).
+     * Esta función es útil para mostrar el record en la interfaz de usuario.
+     * 
+     * @return La puntuación más alta registrada, o 0 si no hay records.
+     */
+    fun obtenerRecordMaximo(): Int {
+        return estado.listaRecords.value.maxOfOrNull { it.puntos } ?: 0
+    }
+
+    /**
+     * Alterna el estado de pausa del juego.
+     * Cuando el juego está en pausa, la simulación se detiene pero la UI permanece activa.
+     */
+    fun alternarPausa() = synchronized(estadoLock) {
+        // Solo permitir pausar cuando estamos jugando
+        if (estado.estadoActual.value == EstadoJuegoEnum.JUGANDO) {
+            estado.enPausa.value = !estado.enPausa.value
+        }
+    }
+
     // Este es el corazón del motor. Se llamará en cada fotograma.
     fun tick(deltaTime: Float) = synchronized(estadoLock) {
-        if (estado.estadoActual.value != EstadoJuegoEnum.JUGANDO) {
-            // Si no estamos jugando, nos aseguramos de que el disparo se desactive
+        if (estado.estadoActual.value != EstadoJuegoEnum.JUGANDO || estado.enPausa.value) {
+            // Si no estamos jugando o el juego está en pausa, nos aseguramos de que el disparo se desactive
             // para no procesar un disparo pendiente al reiniciar.
-            if(estado.disparando) estado.disparando = false
+            if (estado.disparando) estado.disparando = false
             return
         }
 
@@ -207,7 +230,15 @@ class MotorJuego(
         if (estado.disparando) {
             if (estado.tiempoDesdeUltimoDisparo >= RETRASO_DISPARO_SEGUNDOS) {
                 val rads = Math.toRadians(nave.angulo - 90.0)
-                estado.balas.add(Bala(posX = nave.posX, posY = nave.posY, velX = cos(rads).toFloat() * VELOCIDAD_BALA_POR_SEGUNDO, velY = sin(rads).toFloat() * VELOCIDAD_BALA_POR_SEGUNDO, origen = OrigenBala.JUGADOR))
+                estado.balas.add(
+                    Bala(
+                        posX = nave.posX,
+                        posY = nave.posY,
+                        velX = cos(rads).toFloat() * VELOCIDAD_BALA_POR_SEGUNDO,
+                        velY = sin(rads).toFloat() * VELOCIDAD_BALA_POR_SEGUNDO,
+                        origen = OrigenBala.JUGADOR
+                    )
+                )
                 gestorSonido.reproducirSonido("fire")
                 estado.tiempoDesdeUltimoDisparo = 0f
             }
@@ -243,10 +274,21 @@ class MotorJuego(
             o.tiempoParaDisparo -= deltaTime
             if (o.tiempoParaDisparo <= 0f) {
                 val anguloRads = atan2(estado.nave.posY - o.posY, estado.nave.posX - o.posX)
-                estado.balas.add(Bala(o.posX, o.posY, cos(anguloRads) * VELOCIDAD_BALA_POR_SEGUNDO * 0.7f, sin(anguloRads) * VELOCIDAD_BALA_POR_SEGUNDO * 0.7f, OrigenBala.OVNI))
+                estado.balas.add(
+                    Bala(
+                        o.posX,
+                        o.posY,
+                        cos(anguloRads) * VELOCIDAD_BALA_POR_SEGUNDO * 0.7f,
+                        sin(anguloRads) * VELOCIDAD_BALA_POR_SEGUNDO * 0.7f,
+                        OrigenBala.OVNI
+                    )
+                )
                 o.tiempoParaDisparo = Random.nextFloat() * 3f + 2f
             }
-            if (o.posX < -o.radio || o.posX > tamanoCanvas.width + o.radio) estado.ovni = null
+            if (o.posX < -o.radio || o.posX > tamanoCanvas.width + o.radio) {
+                gestorSonido.detenerSonidoOvni()
+                estado.ovni = null
+            }
         }
     }
 
@@ -276,15 +318,37 @@ class MotorJuego(
             if (estado.tiempoParaSiguienteOvni > 0) {
                 estado.tiempoParaSiguienteOvni -= deltaTime
             } else {
+                // Decidir tipo de OVNI: más probabilidad de OVNI grande en niveles bajos
+                val tipoOvni = if (estado.nivel.value <= 3) {
+                    // Niveles 1-3: 70% grande, 30% pequeño
+                    if (Random.nextFloat() < 0.7f) TipoOvni.GRANDE else TipoOvni.PEQUENO
+                } else {
+                    // Niveles 4+: 40% grande, 60% pequeño
+                    if (Random.nextFloat() < 0.4f) TipoOvni.GRANDE else TipoOvni.PEQUENO
+                }
+                
                 val aparecePorIzquierda = Random.nextBoolean()
-                val velocidadBaseOvni = (if (aparecePorIzquierda) (MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO * 0.8f) else -(MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO * 0.8f))
-                val velocidadOvniAjustada = velocidadBaseOvni * (1 + estado.nivel.value * FACTOR_VELOCIDAD_OVNI_POR_NIVEL)
+                val velocidadBaseOvni = if (aparecePorIzquierda) {
+                    MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO * 0.8f
+                } else {
+                    -MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO * 0.8f
+                }
+                
+                // Los OVNI pequeños van más rápido que los grandes
+                val multiplicadorVelocidad = if (tipoOvni == TipoOvni.PEQUENO) 1.4f else 1.0f
+                val velocidadOvniAjustada = velocidadBaseOvni * multiplicadorVelocidad * 
+                    (1 + estado.nivel.value * FACTOR_VELOCIDAD_OVNI_POR_NIVEL)
 
-                estado.ovni = Ovni(
-                    posX = if (aparecePorIzquierda) -30f else tamanoCanvas.width + 30f,
+                val nuevoOvni = Ovni(
+                    posX = if (aparecePorIzquierda) -tipoOvni.radio else tamanoCanvas.width + tipoOvni.radio,
                     posY = Random.nextFloat() * tamanoCanvas.height * 0.8f,
-                    velX = velocidadOvniAjustada
+                    velX = velocidadOvniAjustada,
+                    tipo = tipoOvni
                 )
+                
+                estado.ovni = nuevoOvni
+                // Iniciar el sonido del OVNI correspondiente
+                gestorSonido.iniciarSonidoOvni(nuevoOvni.sonido)
                 estado.tiempoParaSiguienteOvni = Random.nextDouble(8.0, 15.0).toFloat()
             }
         }
@@ -321,16 +385,36 @@ class MotorJuego(
 
                 for (asteroide in estado.asteroides) {
                     if (asteroidesAeliminar.contains(asteroide)) continue
-                    if (hayColision(posX_intermedia, posY_intermedia, bala.radio, asteroide.posX, asteroide.posY, asteroide.tamano.radio) &&
-                        comprobarVerticeEnAsteroide(posX_intermedia, posY_intermedia, asteroide, true)
+                    if (hayColision(
+                            posX_intermedia,
+                            posY_intermedia,
+                            bala.radio,
+                            asteroide.posX,
+                            asteroide.posY,
+                            asteroide.tamano.radio
+                        ) &&
+                        comprobarVerticeEnAsteroide(
+                            posX_intermedia,
+                            posY_intermedia,
+                            asteroide,
+                            true
+                        )
                     ) {
                         balasAeliminar.add(bala)
                         asteroidesAeliminar.add(asteroide)
                         estado.puntuacion.value += asteroide.tamano.puntos
                         gestorSonido.reproducirExplosion()
                         if (asteroide.tamano != TamanoAsteroide.PEQUENO) {
-                            val nuevoTamano = if (asteroide.tamano == TamanoAsteroide.GRANDE) TamanoAsteroide.MEDIANO else TamanoAsteroide.PEQUENO
-                            asteroidesAnadir.addAll(listOf(crearAsteroideFragmento(asteroide, nuevoTamano), crearAsteroideFragmento(asteroide, nuevoTamano)))
+                            val nuevoTamano =
+                                if (asteroide.tamano == TamanoAsteroide.GRANDE) TamanoAsteroide.MEDIANO else TamanoAsteroide.PEQUENO
+                            asteroidesAnadir.addAll(
+                                listOf(
+                                    crearAsteroideFragmento(
+                                        asteroide,
+                                        nuevoTamano
+                                    ), crearAsteroideFragmento(asteroide, nuevoTamano)
+                                )
+                            )
                         }
                         colisionDetectadaBala = true
                         break
@@ -341,8 +425,17 @@ class MotorJuego(
             if (colisionDetectadaBala) continue
 
             estado.ovni?.let { o ->
-                if (bala.origen == OrigenBala.JUGADOR && hayColision(bala.posX, bala.posY, bala.radio, o.posX, o.posY, o.radio)) {
+                if (bala.origen == OrigenBala.JUGADOR && hayColision(
+                        bala.posX,
+                        bala.posY,
+                        bala.radio,
+                        o.posX,
+                        o.posY,
+                        o.radio
+                    )
+                ) {
                     estado.puntuacion.value += o.puntos
+                    gestorSonido.detenerSonidoOvni()
                     estado.ovni = null
                     balasAeliminar.add(bala)
                     gestorSonido.reproducirExplosion()
@@ -376,7 +469,15 @@ class MotorJuego(
             if (!naveDestruida) {
                 for (bala in estado.balas) {
                     if (balasAeliminar.contains(bala)) continue
-                    if (bala.origen == OrigenBala.OVNI && hayColision(estado.nave.posX, estado.nave.posY, RADIO_NAVE, bala.posX, bala.posY, bala.radio)) {
+                    if (bala.origen == OrigenBala.OVNI && hayColision(
+                            estado.nave.posX,
+                            estado.nave.posY,
+                            RADIO_NAVE,
+                            bala.posX,
+                            bala.posY,
+                            bala.radio
+                        )
+                    ) {
                         estado.nave.esInvulnerable = true
                         estado.nave.tiempoInvulnerableRestante = TIEMPO_INVULNERABLE_SEGUNDOS
                         estado.vidas.value--
@@ -395,7 +496,16 @@ class MotorJuego(
             }
             if (!naveDestruida) {
                 estado.ovni?.let { o ->
-                    if (hayColision(estado.nave.posX, estado.nave.posY, RADIO_NAVE, o.posX, o.posY, o.radio)) {
+                    if (hayColision(
+                            estado.nave.posX,
+                            estado.nave.posY,
+                            RADIO_NAVE,
+                            o.posX,
+                            o.posY,
+                            o.radio
+                        )
+                    ) {
+                        gestorSonido.detenerSonidoOvni()
                         estado.ovni = null
                         gestorSonido.reproducirExplosion()
                     }
@@ -412,18 +522,25 @@ class MotorJuego(
         if (estado.asteroides.isEmpty() && estado.ovni == null && tamanoCanvas != Size.Zero) {
             estado.nivel.value++
             estado.balas.clear()
-            estado.asteroides.addAll(crearAsteroidesIniciales(5 + estado.nivel.value - 1, tamanoCanvas))
+            estado.asteroides.addAll(
+                crearAsteroidesIniciales(
+                    5 + estado.nivel.value - 1,
+                    tamanoCanvas
+                )
+            )
         }
     }
 
     fun inicializarNivel() {
         estado.asteroides.clear()
         estado.balas.clear()
+        gestorSonido.detenerSonidoOvni()
         estado.ovni = null
         reiniciarPosicionNave()
 
         // Usamos la nueva fórmula de dificultad.
-        val numAsteroides = ASTEROIDES_INICIALES + (estado.nivel.value - 1) * INCREMENTO_ASTEROIDES_POR_NIVEL
+        val numAsteroides =
+            ASTEROIDES_INICIALES + (estado.nivel.value - 1) * INCREMENTO_ASTEROIDES_POR_NIVEL
         repeat(numAsteroides) {
             estado.asteroides.add(crearAsteroideBorde(tamanoCanvas))
         }
@@ -440,7 +557,10 @@ class MotorJuego(
 
 // --- FUNCIONES AUXILIARES DE LÓGICA (PRIVADAS AL FICHERO) ---
 
-private fun generarFormaAsteroide(radio: Float, irregularidad: Float = 0.4f): Pair<Path, List<Offset>> {
+private fun generarFormaAsteroide(
+    radio: Float,
+    irregularidad: Float = 0.4f,
+): Pair<Path, List<Offset>> {
     val path = Path()
     val vertices = mutableListOf<Offset>()
     val numVertices = 12
@@ -469,7 +589,13 @@ private fun crearAsteroidesIniciales(cantidad: Int, tamanoCanvas: Size): List<As
     return asteroides
 }
 
-private fun crearAsteroideBorde(tamanoCanvas: Size = Size(800f, 600f) /* Valor por defecto seguro */ ): Asteroide {
+private fun crearAsteroideBorde(
+    tamanoCanvas: Size = Size(
+        800f,
+        600f
+    ),
+    /* Valor por defecto seguro */
+): Asteroide {
     val tamano = TamanoAsteroide.GRANDE
     val posX: Float
     val posY: Float
@@ -484,11 +610,13 @@ private fun crearAsteroideBorde(tamanoCanvas: Size = Size(800f, 600f) /* Valor p
         posY = if (Random.nextBoolean()) -tamano.radio else tamanoCanvas.height + tamano.radio
     }
 
-    val anguloHaciaElCentro = atan2((tamanoCanvas.height / 2f) - posY, (tamanoCanvas.width / 2f) - posX)
+    val anguloHaciaElCentro =
+        atan2((tamanoCanvas.height / 2f) - posY, (tamanoCanvas.width / 2f) - posX)
     // Añadimos una pequeña desviación al ángulo para que no todos vayan al centro exacto.
     val anguloFinal = anguloHaciaElCentro + Random.nextDouble(-0.5, 0.5).toFloat()
 
-    val velocidad = MIN_VELOCIDAD_ASTEROIDE_POR_SEGUNDO + Random.nextFloat() * (MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO - MIN_VELOCIDAD_ASTEROIDE_POR_SEGUNDO)
+    val velocidad =
+        MIN_VELOCIDAD_ASTEROIDE_POR_SEGUNDO + Random.nextFloat() * (MAX_VELOCIDAD_ASTEROIDE_POR_SEGUNDO - MIN_VELOCIDAD_ASTEROIDE_POR_SEGUNDO)
     val (path, vertices) = generarFormaAsteroide(tamano.radio)
 
     return Asteroide(
@@ -502,11 +630,23 @@ private fun crearAsteroideBorde(tamanoCanvas: Size = Size(800f, 600f) /* Valor p
     )
 }
 
-private fun crearAsteroideFragmento(asteroidePadre: Asteroide, nuevoTamano: TamanoAsteroide): Asteroide {
+private fun crearAsteroideFragmento(
+    asteroidePadre: Asteroide,
+    nuevoTamano: TamanoAsteroide,
+): Asteroide {
     val angulo = Random.nextFloat() * 2 * PI.toFloat()
-    val velocidad = MIN_VELOCIDAD_FRAGMENTO_POR_SEGUNDO + Random.nextFloat() * (MAX_VELOCIDAD_FRAGMENTO_POR_SEGUNDO - MIN_VELOCIDAD_FRAGMENTO_POR_SEGUNDO)
+    val velocidad =
+        MIN_VELOCIDAD_FRAGMENTO_POR_SEGUNDO + Random.nextFloat() * (MAX_VELOCIDAD_FRAGMENTO_POR_SEGUNDO - MIN_VELOCIDAD_FRAGMENTO_POR_SEGUNDO)
     val (path, vertices) = generarFormaAsteroide(nuevoTamano.radio)
-    return Asteroide(asteroidePadre.posX, asteroidePadre.posY, cos(angulo) * velocidad, sin(angulo) * velocidad, nuevoTamano, path, vertices)
+    return Asteroide(
+        asteroidePadre.posX,
+        asteroidePadre.posY,
+        cos(angulo) * velocidad,
+        sin(angulo) * velocidad,
+        nuevoTamano,
+        path,
+        vertices
+    )
 }
 
 private fun hayColision(x1: Float, y1: Float, r1: Float, x2: Float, y2: Float, r2: Float): Boolean {
@@ -533,12 +673,23 @@ private fun estaPuntoEnPoligono(puntoX: Float, puntoY: Float, poligono: List<Off
 }
 
 private fun hayColisionNaveAsteroide(nave: EstadoNave, asteroide: Asteroide): Boolean {
-    if (!hayColision(nave.posX, nave.posY, RADIO_NAVE, asteroide.posX, asteroide.posY, asteroide.tamano.radio)) {
+    if (!hayColision(
+            nave.posX,
+            nave.posY,
+            RADIO_NAVE,
+            asteroide.posX,
+            asteroide.posY,
+            asteroide.tamano.radio
+        )
+    ) {
         return false
     }
-    val v1x = 0f; val v1y = -25f
-    val v2x = -15f; val v2y = 15f
-    val v3x = 15f; val v3y = 15f
+    val v1x = 0f;
+    val v1y = -25f
+    val v2x = -15f;
+    val v2y = 15f
+    val v3x = 15f;
+    val v3y = 15f
     val anguloNaveRad = (nave.angulo - 90f) * (PI / 180f).toFloat()
     val cosNave = cos(anguloNaveRad)
     val sinNave = sin(anguloNaveRad)
@@ -558,7 +709,12 @@ private fun hayColisionNaveAsteroide(nave: EstadoNave, asteroide: Asteroide): Bo
     return false
 }
 
-private fun comprobarVerticeEnAsteroide(verticeX: Float, verticeY: Float, asteroide: Asteroide, esBala: Boolean = false): Boolean {
+private fun comprobarVerticeEnAsteroide(
+    verticeX: Float,
+    verticeY: Float,
+    asteroide: Asteroide,
+    esBala: Boolean = false,
+): Boolean {
     val puntoX_enEspacioAsteroide = verticeX - asteroide.posX
     val puntoY_enEspacioAsteroide = verticeY - asteroide.posY
 
@@ -566,8 +722,10 @@ private fun comprobarVerticeEnAsteroide(verticeX: Float, verticeY: Float, astero
     val cosAsteroideInv = cos(-anguloAsteroideRad)
     val sinAsteroideInv = sin(-anguloAsteroideRad)
 
-    val puntoFinalX = puntoX_enEspacioAsteroide * cosAsteroideInv - puntoY_enEspacioAsteroide * sinAsteroideInv
-    val puntoFinalY = puntoX_enEspacioAsteroide * sinAsteroideInv + puntoY_enEspacioAsteroide * cosAsteroideInv
+    val puntoFinalX =
+        puntoX_enEspacioAsteroide * cosAsteroideInv - puntoY_enEspacioAsteroide * sinAsteroideInv
+    val puntoFinalY =
+        puntoX_enEspacioAsteroide * sinAsteroideInv + puntoY_enEspacioAsteroide * cosAsteroideInv
 
     return estaPuntoEnPoligono(puntoFinalX, puntoFinalY, asteroide.vertices)
 } 

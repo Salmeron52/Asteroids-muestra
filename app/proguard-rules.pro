@@ -71,7 +71,7 @@
   *** Companion;
 }
 -keepclassmembers class * {
-    @kotlinx.serialization.Serializable *** ;
+    @kotlinx.serialization.Serializable <fields>;
 }
 -keepclassmembers @kotlinx.serialization.Serializable class * {
     <fields>;
@@ -84,3 +84,56 @@
 
 # Para clases anotadas con @Contextual
 -keep,allowobfuscation @kotlinx.serialization.Contextual class *
+
+# -----------------------------------------------------------------------------
+# Reglas específicas para el juego Asteroids
+# Estas reglas protegen las clases críticas del juego para evitar problemas en release
+# -----------------------------------------------------------------------------
+
+# Mantener todas las clases principales del juego
+-keep class com.buenhijogames.asteroid.MainActivity { *; }
+-keep class com.buenhijogames.asteroid.MotorJuego { *; }
+-keep class com.buenhijogames.asteroid.GestorSonido { *; }
+-keep class com.buenhijogames.asteroid.GestorPuntuacion { *; }
+-keep class com.buenhijogames.asteroid.JuegoSurfaceView { *; }
+
+# Mantener todas las data classes del juego (críticas para el funcionamiento)
+-keep class com.buenhijogames.asteroid.Bala { *; }
+-keep class com.buenhijogames.asteroid.Asteroide { *; }
+-keep class com.buenhijogames.asteroid.Ovni { *; }
+-keep class com.buenhijogames.asteroid.EstadoNave { *; }
+
+# Mantener todos los enums del juego (ProGuard puede romperlos)
+-keep enum com.buenhijogames.asteroid.OrigenBala { *; }
+-keep enum com.buenhijogames.asteroid.TamanoAsteroide { *; }
+-keep enum com.buenhijogames.asteroid.TipoOvni { *; }
+-keep enum com.buenhijogames.asteroid.EstadoJuegoEnum { *; }
+
+# Reglas para SoundPool y recursos de audio (crítico para el audio del juego)
+-keep class android.media.SoundPool { *; }
+-keep class android.media.AudioAttributes { *; }
+-keep class android.media.AudioAttributes$Builder { *; }
+
+# Reglas para Canvas y gráficos (crítico para el renderizado)
+-keep class android.graphics.Canvas { *; }
+-keep class android.graphics.Paint { *; }
+-keep class android.graphics.Path { *; }
+
+# Reglas para clases Compose ViewInterop (para AndroidView)
+-keep class androidx.compose.ui.viewinterop.** { *; }
+
+# Reglas generales para evitar crashes
+-keep class * extends android.app.Activity
+-keep class * extends androidx.activity.ComponentActivity
+
+# Mantener constructores por defecto para evitar crashes de reflexión
+-keepclassmembers class com.buenhijogames.asteroid.** {
+    <init>(...);
+}
+
+# Reglas para debugging - mantener información de líneas para crashes más claros
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+# Reglas para evitar warnings comunes en Play Store
+-dontwarn java.lang.invoke.StringConcatFactory

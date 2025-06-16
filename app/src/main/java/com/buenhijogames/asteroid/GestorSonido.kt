@@ -3,7 +3,6 @@ package com.buenhijogames.asteroid
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
-import kotlin.random.Random
 
 /**
  * Gestor de Sonido para encapsular la lógica de SoundPool.
@@ -19,6 +18,9 @@ class GestorSonido(private val context: Context) {
     private var soundPool: SoundPool? = null
     private val idSonidos: MutableMap<String, Int> = mutableMapOf()
     private val idExplosiones = mutableListOf<Int>()
+    
+    // Control para sonidos en loop (como el OVNI)
+    private var idSonidoOvniActual: Int? = null
 
     /**
      * Carga todos los sonidos necesarios para el juego en el SoundPool.
@@ -40,6 +42,10 @@ class GestorSonido(private val context: Context) {
             idSonidos["thrust"] = pool.load(context, R.raw.thrust, 1)
             idSonidos["beat1"] = pool.load(context, R.raw.thumplo, 1)
             idSonidos["beat2"] = pool.load(context, R.raw.thumphi, 1)
+
+            // Sonidos de OVNI - usando los archivos originales de Asteroids
+            idSonidos["ovni_grande"] = pool.load(context, R.raw.lsaucer, 1)
+            idSonidos["ovni_pequeno"] = pool.load(context, R.raw.ssaucer, 1)
 
             // Cargamos las explosiones y las guardamos en una lista separada
             // para poder elegir una al azar fácilmente.
@@ -70,12 +76,40 @@ class GestorSonido(private val context: Context) {
         }
     }
 
+    /**
+     * Comienza a reproducir el sonido del OVNI en bucle mientras está en pantalla.
+     * Solo un sonido de OVNI puede estar activo a la vez.
+     * 
+     * @param tipoSonido El tipo de sonido del OVNI ("ovni_grande" o "ovni_pequeno")
+     */
+    fun iniciarSonidoOvni(tipoSonido: String) {
+        // Primero detenemos cualquier sonido de OVNI que esté sonando
+        detenerSonidoOvni()
+        
+        val idSonido = idSonidos[tipoSonido]
+        idSonido?.let {
+            // Reproducimos en loop (-1 = loop infinito)
+            idSonidoOvniActual = soundPool?.play(it, 0.8f, 0.8f, 1, -1, 1f)
+        }
+    }
+
+    /**
+     * Detiene el sonido del OVNI si está reproduciéndose.
+     */
+    fun detenerSonidoOvni() {
+        idSonidoOvniActual?.let { streamId ->
+            soundPool?.stop(streamId)
+            idSonidoOvniActual = null
+        }
+    }
+
 
     /**
      * Libera los recursos de SoundPool para evitar fugas de memoria.
      * Debe llamarse cuando el gestor ya no se vaya a utilizar (ej. en onDispose o onDestroy).
      */
     fun liberarRecursos() {
+        detenerSonidoOvni() // Asegurar que el sonido del OVNI se detenga
         soundPool?.release()
         soundPool = null
     }

@@ -9,7 +9,8 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.ui.graphics.asAndroidPath
 
-class JuegoSurfaceView(context: Context, private val motorJuego: MotorJuego) : SurfaceView(context), SurfaceHolder.Callback {
+class JuegoSurfaceView(context: Context, private val motorJuego: MotorJuego) : SurfaceView(context),
+    SurfaceHolder.Callback {
 
     private var hiloJuego: HiloJuego? = null
     private val paint = Paint().apply {
@@ -28,9 +29,9 @@ class JuegoSurfaceView(context: Context, private val motorJuego: MotorJuego) : S
     }
 
     private val pathNave = Path().apply {
-        moveTo(0f, -25f)
-        lineTo(-15f, 15f)
-        lineTo(15f, 15f)
+        moveTo(0f, -37.5f)
+        lineTo(-22.5f, 22.5f)
+        lineTo(22.5f, 22.5f)
         close()
     }
 
@@ -69,7 +70,8 @@ class JuegoSurfaceView(context: Context, private val motorJuego: MotorJuego) : S
 
         // Dibujar Balas
         estadoUI.balas.forEach { bala ->
-            val paintBala = if (bala.origen == OrigenBala.JUGADOR) paintBalaBlanca else paintBalaRoja
+            val paintBala =
+                if (bala.origen == OrigenBala.JUGADOR) paintBalaBlanca else paintBalaRoja
             canvas.drawCircle(bala.posX, bala.posY, bala.radio, paintBala)
         }
         // Dibujar Asteroides
@@ -89,7 +91,8 @@ class JuegoSurfaceView(context: Context, private val motorJuego: MotorJuego) : S
         }
         // Dibujar Nave
         if (estadoUI.vidas.value > 0) {
-            val esVisible = if (estadoUI.nave.esInvulnerable) (System.currentTimeMillis() / 200) % 2 == 0L else true
+            val esVisible =
+                if (estadoUI.nave.esInvulnerable) (System.currentTimeMillis() / 200) % 2 == 0L else true
             if (esVisible) {
                 canvas.save()
                 canvas.translate(estadoUI.nave.posX, estadoUI.nave.posY)
@@ -104,7 +107,7 @@ class JuegoSurfaceView(context: Context, private val motorJuego: MotorJuego) : S
 private class HiloJuego(
     private val surfaceHolder: SurfaceHolder,
     private val motorJuego: MotorJuego,
-    private val juegoSurfaceView: JuegoSurfaceView
+    private val juegoSurfaceView: JuegoSurfaceView,
 ) : Thread() {
 
     private var corriendo = false
@@ -126,7 +129,7 @@ private class HiloJuego(
 
             // 1. Actualiza la lógica del juego (fuera de cualquier bloqueo de canvas)
             // Evita saltos enormes si el juego se pausa y reanuda.
-            val dtCorregido = if (deltaTime > 0.5f) 1f/60f else deltaTime
+            val dtCorregido = if (deltaTime > 0.5f) 1f / 60f else deltaTime
             motorJuego.tick(dtCorregido)
 
             // 2. Dibuja el estado resultante en el canvas
