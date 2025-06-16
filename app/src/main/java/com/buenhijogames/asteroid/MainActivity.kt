@@ -56,6 +56,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -195,23 +196,30 @@ fun PantallaJuego() {
         }
     }
 
-    // La UI vuelve a estar contenida en un BoxWithConstraints para calcular el aspect ratio
+    // El layout principal ahora es un Box para permitir la superposición de elementos.
+    // Esto es clave para el diseño adaptativo.
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            // Añadimos un padding que respeta el espacio de la barra de estado.
+            .background(Color.Black) // Fondo negro para todo el espacio
             .statusBarsPadding()
     ) {
         val gameHeight = this.maxHeight
         val gameWidth = this.maxWidth
-        val ratio = 4f / 3f
+        val ratioJuego = 4f / 3f
 
-        // Calculamos las dimensiones del canvas del juego para que sea 4:3
-        val canvasWidth = if (gameWidth / gameHeight < ratio) gameWidth else gameHeight * ratio
-        val canvasHeight = if (gameWidth / gameHeight < ratio) gameWidth / ratio else gameHeight
-
-        // El espacio sobrante se divide entre los dos paneles de control
-        val controlPanelWidth = (gameWidth - canvasWidth) / 2
+        // 1. Calculamos las dimensiones del canvas del juego para que siempre sea 4:3
+        val canvasWidth: Dp
+        val canvasHeight: Dp
+        if (gameWidth / gameHeight < ratioJuego) {
+            // La pantalla es más alta que ancha (en relación al 4:3), el ancho es el límite
+            canvasWidth = gameWidth
+            canvasHeight = gameWidth / ratioJuego
+        } else {
+            // La pantalla es más ancha que alta, la altura es el límite
+            canvasHeight = gameHeight
+            canvasWidth = gameHeight * ratioJuego
+        }
 
         val onHiperespacio: () -> Unit = { motorJuego.ejecutarHiperespacio() }
         val onDisparo: () -> Unit = { motorJuego.disparar() }
@@ -219,213 +227,60 @@ fun PantallaJuego() {
             { nuevoAngulo -> motorJuego.establecerRotacionNave(nuevoAngulo) }
         val onEmpujeChanged: (Boolean) -> Unit = { motorJuego.establecerEmpujeNave(it) }
 
-        // El layout principal es una Fila (Row) con los paneles a los lados y el juego en el centro.
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+        // 2. Área de Juego Principal (Lienzo), siempre centrada
+        Box(
+            modifier = Modifier
+                .size(canvasWidth, canvasHeight)
+                .align(Alignment.Center) // Centramos el juego en el espacio disponible
         ) {
-            // --- Panel de Control Izquierdo ---
-            PanelControlIzquierdo(
-                modifier = Modifier
-                    .width(controlPanelWidth)
-                    .fillMaxHeight(),
-                puntuacion = estadoUI.puntuacion.value,
-                onGiroChanged = onGiroChanged,
-                onHiperespacio = onHiperespacio
+            val density = LocalDensity.current
+            AndroidView(
+                factory = { ctx -> JuegoSurfaceView(ctx, motorJuego) },
+                update = { view ->
+                    val widthInPx = with(density) { canvasWidth.toPx() }
+                    val heightInPx = with(density) { canvasHeight.toPx() }
+                    motorJuego.establecerLimites(widthInPx, heightInPx)
+                },
+                modifier = Modifier.fillMaxSize()
             )
 
-            // --- Área de Juego Principal (Lienzo) ---
-            Box(
-                modifier = Modifier.size(canvasWidth, canvasHeight)
-            ) {
-                // El SurfaceView se ajusta al tamaño calculado.
-                val density = LocalDensity.current
-                AndroidView(
-                    factory = { ctx ->
-                        // La factory se llama una sola vez para crear la vista.
-                        JuegoSurfaceView(ctx, motorJuego)
-                    },
-                    update = { view ->
-                        // El bloque update se llama cuando el Composable se actualiza.
-                        // Aquí es donde comunicamos el tamaño correcto en píxeles al motor.
-                        val widthInPx = with(density) { canvasWidth.toPx() }
-                        val heightInPx = with(density) { canvasHeight.toPx() }
-                        motorJuego.establecerLimites(widthInPx, heightInPx)
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                // Superposición de información del juego (record y nivel) - Solo durante el juego
-                if (estadoUI.estadoActual.value == EstadoJuegoEnum.JUGANDO) {
-                    // Obtenemos el record máximo actual para mostrarlo
-                    val recordMaximo = motorJuego.obtenerRecordMaximo()
-
-                    // Información en la parte superior de la pantalla de juego
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        // Record en la parte superior izquierda
-                        Text(
-                            text = "RECORD $recordMaximo",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .background(
-                                    Color.Black.copy(alpha = 0.5f),
-                                    RoundedCornerShape(4.dp)
-                                )
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-
-                        // Nivel en la parte superior derecha
-                        Text(
-                            text = "NIVEL ${estadoUI.nivel.value}",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .background(
-                                    Color.Black.copy(alpha = 0.5f),
-                                    RoundedCornerShape(4.dp)
-                                )
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-
-                    // Indicación de pausa en el centro de la pantalla
-                    if (estadoUI.enPausa.value) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "PAUSA",
-                                color = Color.White,
-                                fontSize = 48.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .background(
-                                        Color.Black.copy(alpha = 0.7f),
-                                        RoundedCornerShape(8.dp)
-                                    )
-                                    .padding(24.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Superposición (Overlay) para el estado de GAME OVER o NUEVO_RECORD
-                when (estadoUI.estadoActual.value) {
-                    EstadoJuegoEnum.GAME_OVER -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "GAME OVER",
-                                    color = Color.White,
-                                    fontSize = 48.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Asteroids by buenhijoGames",
-                                    color = Color.White,
-                                    fontSize = 24.sp
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Row {
-                                    BotonControl(
-                                        texto = "REINICIAR",
-                                        onPress = { motorJuego.reiniciarJuego() },
-                                        onRelease = { }
-                                    )
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    BotonControl(
-                                        texto = "RÉCORDS",
-                                        onPress = { mostrandoRecords = true },
-                                        onRelease = { }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    EstadoJuegoEnum.NUEVO_RECORD -> {
-                        var iniciales by remember { mutableStateOf(TextFieldValue("")) }
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .background(Color.Black.copy(alpha = 0.7f))
-                                    .padding(16.dp)
-                            ) {
-                                Text(
-                                    "¡NUEVO RÉCORD!",
-                                    color = Color.White,
-                                    fontSize = 36.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "${estadoUI.puntuacion.value}",
-                                    color = Color.White,
-                                    fontSize = 28.sp
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                TextField(
-                                    value = iniciales,
-                                    onValueChange = {
-                                        if (it.text.length <= 3) iniciales = it
-                                    },
-                                    label = { Text("Tus iniciales") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                BotonControl(
-                                    texto = "GUARDAR",
-                                    onPress = {
-                                        motorJuego.guardarNuevoRecord(iniciales.text.uppercase())
-                                    },
-                                    onRelease = {}
-                                )
-                            }
-                        }
-                    }
-
-                    else -> { /* No se muestra nada si está JUGANDO */
-                    }
-                }
-            }
-
-            // --- Panel de Control Derecho ---
-            PanelControlDerecho(
-                modifier = Modifier
-                    .width(controlPanelWidth)
-                    .fillMaxHeight(),
-                vidas = estadoUI.vidas.value,
-                enPausa = estadoUI.enPausa.value,
-                onEmpujeChanged = onEmpujeChanged,
-                onDisparo = onDisparo,
-                onPausa = { motorJuego.alternarPausa() }
-            )
+            // Superposición de textos (record, nivel, pausa), se escala con el juego
+            JuegoInfoOverlay(motorJuego)
+            // Superposición de menús (Game Over, Nuevo Récord)
+            JuegoMenuOverlay(motorJuego, onMostrarRecords = { mostrandoRecords = true })
         }
+
+
+        // 3. Paneles de control, anclados a los lados de la pantalla
+        // Se superpondrán sobre el juego en pantallas estrechas
+        PanelControlIzquierdo(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxHeight()
+                .width(120.dp) // Ancho fijo para garantizar usabilidad
+                .background(Color.Black.copy(alpha = 0.4f)), // Fondo semi-transparente
+            puntuacion = estadoUI.puntuacion.value,
+            onGiroChanged = onGiroChanged,
+            onHiperespacio = onHiperespacio
+        )
+
+        PanelControlDerecho(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(120.dp) // Ancho fijo
+                .background(Color.Black.copy(alpha = 0.4f)), // Fondo semi-transparente
+            vidas = estadoUI.vidas.value,
+            enPausa = estadoUI.enPausa.value,
+            onEmpujeChanged = onEmpujeChanged,
+            onDisparo = onDisparo,
+            onPausa = { motorJuego.alternarPausa() }
+        )
     }
 
     if (mostrandoRecords) {
         PantallaRecords(
-            records = estadoUI.listaRecords.value,
+            records = motorJuego.estado.listaRecords.value,
             onCerrar = { mostrandoRecords = false }
         )
     }
@@ -748,11 +603,12 @@ fun PantallaRecords(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "MEJORES PUNTUACIONES",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.Yellow
+                color = Color.White
             )
             Spacer(modifier = Modifier.height(16.dp))
             LazyColumn(
@@ -795,6 +651,161 @@ fun PantallaRecords(
             }
             Spacer(modifier = Modifier.height(16.dp))
             BotonControl(texto = "CERRAR", onPress = onCerrar, onRelease = {})
+        }
+    }
+}
+
+/**
+ * Un Composable dedicado a mostrar la información superpuesta durante el juego.
+ * Esto mantiene la `PantallaJuego` principal más limpia y organizada.
+ */
+@Composable
+fun JuegoInfoOverlay(motorJuego: MotorJuego) {
+    val estadoUI = motorJuego.estado
+    if (estadoUI.estadoActual.value == EstadoJuegoEnum.JUGANDO) {
+        // Obtenemos el record máximo actual para mostrarlo
+        val recordMaximo = motorJuego.obtenerRecordMaximo()
+
+        // Información en la parte superior de la pantalla de juego
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Text(
+                text = "RECORD\n$recordMaximo",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+
+            Text(
+                text = "NIVEL\n${estadoUI.nivel.value}",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        // Indicación de pausa en el centro de la pantalla
+        if (estadoUI.enPausa.value) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "PAUSA",
+                    color = Color.White,
+                    fontSize = 48.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .background(
+                            Color.Black.copy(alpha = 0.7f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 32.dp, vertical = 16.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Un Composable dedicado a mostrar los menús de fin de partida (Game Over, Nuevo Récord).
+ */
+@Composable
+fun JuegoMenuOverlay(motorJuego: MotorJuego, onMostrarRecords: () -> Unit) {
+    val estadoUI = motorJuego.estado
+    when (estadoUI.estadoActual.value) {
+        EstadoJuegoEnum.GAME_OVER -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "GAME OVER",
+                        color = Color.White,
+                        fontSize = 48.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "by buenhijoGames",
+                        color = Color.White,
+                        fontSize = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row {
+                        BotonControl(
+                            texto = "REINICIAR",
+                            onPress = { motorJuego.reiniciarJuego() },
+                            onRelease = { }
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        BotonControl(
+                            texto = "RÉCORDS",
+                            onPress = onMostrarRecords,
+                            onRelease = { }
+                        )
+                    }
+                }
+            }
+        }
+
+        EstadoJuegoEnum.NUEVO_RECORD -> {
+            var iniciales by remember { mutableStateOf(TextFieldValue("")) }
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.8f))
+                        .padding(24.dp)
+                        .border(1.dp, Color.White)
+                ) {
+                    Text(
+                        "¡NUEVO RÉCORD!",
+                        color = Color.White,
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "${estadoUI.puntuacion.value}",
+                        color = Color.White,
+                        fontSize = 32.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    TextField(
+                        value = iniciales,
+                        onValueChange = {
+                            if (it.text.length <= 3) iniciales = it
+                        },
+                        label = { Text("Tus iniciales (3 letras)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    BotonControl(
+                        texto = "GUARDAR",
+                        onPress = {
+                            if (iniciales.text.isNotBlank()) {
+                                motorJuego.guardarNuevoRecord(iniciales.text.uppercase())
+                            }
+                        },
+                        onRelease = {}
+                    )
+                }
+            }
+        }
+        else -> { /* No se muestra nada si está JUGANDO */
         }
     }
 }

@@ -132,6 +132,7 @@ class MotorJuego(
         estado.nave.tiempoInvulnerableRestante = 0f
         estado.estadoActual.value = EstadoJuegoEnum.JUGANDO
         estado.enPausa.value = false // Asegurar que el juego no esté en pausa al reiniciar
+        gestorSonido.detenerSonidoOvni() // Detener cualquier sonido del OVNI al reiniciar
         inicializarNivel()
     }
 
@@ -174,6 +175,16 @@ class MotorJuego(
         // Solo permitir pausar cuando estamos jugando
         if (estado.estadoActual.value == EstadoJuegoEnum.JUGANDO) {
             estado.enPausa.value = !estado.enPausa.value
+            
+            // Detener el sonido del OVNI cuando se pausa, reanudarlo cuando se despausa
+            if (estado.enPausa.value) {
+                gestorSonido.detenerSonidoOvni()
+            } else {
+                // Al despausar, si hay un OVNI presente, reanudar su sonido
+                estado.ovni?.let { ovni ->
+                    gestorSonido.iniciarSonidoOvni(ovni.sonido)
+                }
+            }
         }
     }
 
@@ -455,6 +466,7 @@ class MotorJuego(
                         estado.vidas.value--
                         gestorSonido.reproducirExplosion()
                         if (estado.vidas.value <= 0) {
+                            gestorSonido.detenerSonidoOvni() // Detener sonido al terminar partida
                             if (esPuntuacionDeRecord(estado.puntuacion.value)) {
                                 estado.estadoActual.value = EstadoJuegoEnum.NUEVO_RECORD
                             } else {
@@ -484,6 +496,7 @@ class MotorJuego(
                         gestorSonido.reproducirExplosion()
                         balasAeliminar.add(bala)
                         if (estado.vidas.value <= 0) {
+                            gestorSonido.detenerSonidoOvni() // Detener sonido al terminar partida
                             if (esPuntuacionDeRecord(estado.puntuacion.value)) {
                                 estado.estadoActual.value = EstadoJuegoEnum.NUEVO_RECORD
                             } else {
