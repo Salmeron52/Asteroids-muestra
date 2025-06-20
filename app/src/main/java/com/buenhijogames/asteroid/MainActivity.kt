@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
@@ -160,6 +161,19 @@ enum class EstadoJuego {
 */
 
 class MainActivity : ComponentActivity() {
+
+    // Atamos la instancia del MotorJuego al ciclo de vida de la Activity.
+    // Se creará de forma perezosa (lazy) la primera vez que se acceda a él.
+    // Esto garantiza que siempre tengamos la misma instancia y que sea accesible
+    // desde los métodos del ciclo de vida como onPause.
+    private val motorJuego: MotorJuego by lazy {
+        val gestorSonido = GestorSonido(this)
+        val gestorPuntuacion = GestorPuntuacion(this)
+        MotorJuego(gestorSonido, gestorPuntuacion)
+    }
+
+    private var isFirstRun = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Hacemos que la app se dibuje a pantalla completa (edge-to-edge)
@@ -170,21 +184,48 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = Color.Black
                 ) {
-                    PantallaJuego()
+                    // Ahora pasamos directamente la instancia del motor que pertenece a la Activity.
+                    PantallaJuego(motorJuego)
                 }
             }
         }
     }
+
+    override fun onPause() {
+        super.onPause()
+        // Ahora podemos llamar a pausarJuego de forma segura, sabiendo que motorJuego nunca es nulo.
+        motorJuego.pausarJuego()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Al volver a la app, también forzamos la pausa.
+        // PERO, evitamos hacerlo en el primer arranque de la app.
+        if (!isFirstRun) {
+            motorJuego.pausarJuego()
+        }
+        isFirstRun = false
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Liberamos los recursos del gestor de sonido (SoundPool) para evitar fugas de memoria.
+        motorJuego.liberarRecursos()
+    }
 }
 
 @Composable
-fun PantallaJuego() {
+fun rememberMotorJuego(): MotorJuego {
     val context = LocalContext.current
-    val motorJuego = remember {
+    return remember {
         val gestorSonido = GestorSonido(context)
         val gestorPuntuacion = GestorPuntuacion(context)
         MotorJuego(gestorSonido, gestorPuntuacion)
     }
+}
+
+@Composable
+fun PantallaJuego(motorJuego: MotorJuego) {
     val estadoUI = motorJuego.estado
 
     var mostrandoRecords by remember { mutableStateOf(false) }
@@ -475,7 +516,9 @@ fun VistaPreviaPantallaJuego() {
             modifier = Modifier.fillMaxSize(),
             color = Color.Black
         ) {
-            PantallaJuego()
+            // Para la preview, seguimos usando la versión "remember" para que sea autocontenida.
+            val motorJuego = rememberMotorJuego()
+            PantallaJuego(motorJuego)
         }
     }
 }
@@ -534,52 +577,74 @@ fun PanelControlDerecho(
 ) {
     Column(
         modifier = modifier
-            .fillMaxSize()
-            .padding(vertical = 16.dp, horizontal = 4.dp),
+            .fillMaxHeight()
+            .width(120.dp) // Ancho fijo para el panel
+            .background(Color.Black.copy(alpha = 0.5f)) // Fondo semi-transparente
+            .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween // Distribuye el espacio
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Row {
-            val pathVida = remember {
-                Path().apply {
-                    moveTo(0f, -25f)
-                    lineTo(-18f, 18f)
-                    lineTo(18f, 18f)
-                    close()
-                }
-            }
-            repeat(vidas.coerceAtLeast(0)) {
-                Canvas(
-                    modifier = Modifier
-                        .size(45.dp)
-                        .padding(horizontal = 3.dp)
-                ) {
-                    translate(left = center.x, top = center.y) {
-                        drawPath(pathVida, color = Color.White, style = Stroke(4f))
+        // Sección de Vidas
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                // 1. Dibujamos UNA SOLA nave como icono, usando la misma geometría que la nave del jugador.
+                Canvas(modifier = Modifier.size(60.dp), onDraw = {
+                    val pathOriginal = Path().apply {
+                        moveTo(0f, -37.5f)
+                        lineTo(-22.5f, 22.5f)
+                        lineTo(22.5f, 22.5f)
+                        close()
                     }
-                }
+
+                    // Creamos un nuevo path transformado para no modificar el original.
+                    val pathTransformado = Path()
+                    // Creamos una matriz de transformación y la escalamos (ajustada al nuevo tamaño del canvas).
+                    val matriz = android.graphics.Matrix()
+                    matriz.setScale(0.8f, 0.8f) // Aumentado al doble
+                    // Aplicamos la transformación al path.
+                    pathOriginal.asAndroidPath().transform(matriz, pathTransformado.asAndroidPath())
+
+                    // Dibujamos el path ya escalado, centrándolo en el canvas.
+                    translate(left = size.width / 2, top = size.height / 2) {
+                        drawPath(path = pathTransformado, color = Color.White, style = Stroke(width = 4f))
+                    }
+                })
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // 2. Mostramos el número de vidas restantes en texto
+                Text(
+                    text = "x ${vidas.coerceAtLeast(0)}",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Fila para los botones de icono (Sonido y Pausa)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Botón de Sonido
+        // Botones de acción y controles
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Controles de Pausa y Volumen
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                // Botón de Volumen
                 IconButton(onClick = onCiclarVolumen) {
+                    val iconoVolumen = when (estadoVolumen) {
+                        EstadoVolumen.MUTED -> R.drawable.volume_off_ico
+                        EstadoVolumen.HALF -> R.drawable.volume_down_ico
+                        EstadoVolumen.FULL -> R.drawable.volume_up_ico
+                    }
                     Icon(
-                        painter = painterResource(
-                            id = when (estadoVolumen) {
-                                EstadoVolumen.FULL -> R.drawable.volume_up_ico
-                                EstadoVolumen.HALF -> R.drawable.volume_down_ico
-                                EstadoVolumen.MUTED -> R.drawable.volume_off_ico
-                            }
-                        ),
-                        contentDescription = "Controlar Volumen",
-                        tint = Color.Unspecified, // Para usar los colores del PNG y no aplicar tinte.
-                        modifier = Modifier.size(36.dp)
+                        painter = painterResource(id = iconoVolumen),
+                        contentDescription = "Control de Volumen",
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(48.dp)
                     )
                 }
 
@@ -587,23 +652,26 @@ fun PanelControlDerecho(
 
                 // Botón de Pausa
                 IconButton(onClick = onPausa) {
+                    val iconoPausa = if (enPausa) {
+                        R.drawable.play_arrow_ico
+                    } else {
+                        R.drawable.pause_ico
+                    }
                     Icon(
-                        painter = painterResource(
-                            id = if (enPausa) R.drawable.play_arrow_ico else R.drawable.pause_ico
-                        ),
-                        contentDescription = if (enPausa) "Reanudar" else "Pausar",
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
+                        painter = painterResource(id = iconoPausa),
+                        contentDescription = "Pausa / Reanudar",
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(47.dp)
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(16.dp))
+
             BotonControl(
                 texto = "ACELERAR",
                 onPress = { onEmpujeChanged(true) },
                 onRelease = { onEmpujeChanged(false) }
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             BotonControl(
                 texto = "DISPARAR",
                 onPress = onDisparo,

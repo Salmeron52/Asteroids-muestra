@@ -173,22 +173,28 @@ class MotorJuego(
 
     /**
      * Alterna el estado de pausa del juego.
-     * Cuando el juego está en pausa, la simulación se detiene pero la UI permanece activa.
+     * Si el juego está en pausa, lo reanuda. Si está corriendo, lo pausa.
+     * También gestiona el sonido del OVNI.
      */
-    fun alternarPausa() = synchronized(estadoLock) {
-        // Solo permitir pausar cuando estamos jugando
-        if (estado.estadoActual.value == EstadoJuegoEnum.JUGANDO) {
-            estado.enPausa.value = !estado.enPausa.value
-            
-            // Detener el sonido del OVNI cuando se pausa, reanudarlo cuando se despausa
-            if (estado.enPausa.value) {
-                gestorSonido.detenerSonidoOvni()
-            } else {
-                // Al despausar, si hay un OVNI presente, reanudar su sonido
-                estado.ovni?.let { ovni ->
-                    gestorSonido.iniciarSonidoOvni(ovni.sonido)
-                }
+    fun alternarPausa() {
+        estado.enPausa.value = !estado.enPausa.value
+        if (estado.enPausa.value) {
+            gestorSonido.detenerSonidoOvni()
+        } else {
+            // Si hay un OVNI al reanudar, reiniciamos su sonido
+            estado.ovni?.let {
+                gestorSonido.iniciarSonidoOvni(it.sonido)
             }
+        }
+    }
+
+    /**
+     * Pausa el juego si no está ya en pausa.
+     * Ideal para ser llamado desde eventos del ciclo de vida de la app (ej. onPause).
+     */
+    fun pausarJuego() {
+        if (!estado.enPausa.value) {
+            alternarPausa()
         }
     }
 
