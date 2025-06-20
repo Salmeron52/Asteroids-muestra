@@ -590,8 +590,8 @@ fun PanelControlDerecho(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                // 1. Dibujamos UNA SOLA nave como icono, usando la misma geometría que la nave del jugador.
-                Canvas(modifier = Modifier.size(60.dp), onDraw = {
+                // 1. Dibujamos UNA SOLA nave como icono. Reducimos el ancho del Canvas para que se ajuste al dibujo.
+                Canvas(modifier = Modifier.size(width = 40.dp, height = 60.dp), onDraw = { // Ancho ajustado
                     val pathOriginal = Path().apply {
                         moveTo(0f, -37.5f)
                         lineTo(-22.5f, 22.5f)
@@ -613,7 +613,7 @@ fun PanelControlDerecho(
                     }
                 })
 
-                Spacer(modifier = Modifier.width(8.dp))
+                // El Spacer ya no es necesario, el tamaño ajustado del Canvas controla la separación.
 
                 // 2. Mostramos el número de vidas restantes en texto
                 Text(

@@ -47,6 +47,7 @@ class EstadoJuego {
     var nivel = mutableStateOf(1)
     var estadoActual = mutableStateOf(EstadoJuegoEnum.JUGANDO) // Usaremos un enum más explícito
     var enPausa = mutableStateOf(false) // Estado de pausa del juego
+    var puntuacionParaSiguienteVida: Int = PUNTUACION_PRIMERA_VIDA_EXTRA
 
     // Variables de control del jugador (entradas)
     var factorRotacion: Float = 0f
@@ -132,6 +133,7 @@ class MotorJuego(
         estado.nivel.value = 1
         estado.vidas.value = 3
         estado.puntuacion.value = 0
+        estado.puntuacionParaSiguienteVida = PUNTUACION_PRIMERA_VIDA_EXTRA
         estado.nave.esInvulnerable = false
         estado.nave.tiempoInvulnerableRestante = 0f
         estado.estadoActual.value = EstadoJuegoEnum.JUGANDO
@@ -430,7 +432,7 @@ class MotorJuego(
                     ) {
                         balasAeliminar.add(bala)
                         asteroidesAeliminar.add(asteroide)
-                        estado.puntuacion.value += asteroide.tamano.puntos
+                        actualizarPuntuacion(asteroide.tamano.puntos)
                         gestorSonido.reproducirExplosion()
                         if (asteroide.tamano != TamanoAsteroide.PEQUENO) {
                             val nuevoTamano =
@@ -462,7 +464,7 @@ class MotorJuego(
                         o.radio
                     )
                 ) {
-                    estado.puntuacion.value += o.puntos
+                    actualizarPuntuacion(o.puntos)
                     gestorSonido.detenerSonidoOvni()
                     estado.ovni = null
                     balasAeliminar.add(bala)
@@ -582,6 +584,21 @@ class MotorJuego(
         estado.nave.velX = 0f
         estado.nave.velY = 0f
         estado.nave.angulo = 0f
+    }
+
+    private fun actualizarPuntuacion(puntos: Int) {
+        estado.puntuacion.value += puntos
+        // Usamos un bucle por si el jugador gana suficientes puntos para dos vidas a la vez.
+        while (estado.puntuacion.value >= estado.puntuacionParaSiguienteVida) {
+            estado.vidas.value++
+            gestorSonido.reproducirSonido("life")
+            // Actualizamos el siguiente objetivo de puntos.
+            if (estado.puntuacionParaSiguienteVida == PUNTUACION_PRIMERA_VIDA_EXTRA) {
+                estado.puntuacionParaSiguienteVida = PUNTUACION_SEGUNDA_VIDA_EXTRA
+            } else {
+                estado.puntuacionParaSiguienteVida += INTERVALO_VIDA_EXTRA
+            }
+        }
     }
 }
 
@@ -758,4 +775,8 @@ private fun comprobarVerticeEnAsteroide(
         puntoX_enEspacioAsteroide * sinAsteroideInv + puntoY_enEspacioAsteroide * cosAsteroideInv
 
     return estaPuntoEnPoligono(puntoFinalX, puntoFinalY, asteroide.vertices)
-} 
+}
+
+const val PUNTUACION_PRIMERA_VIDA_EXTRA = 5000
+const val PUNTUACION_SEGUNDA_VIDA_EXTRA = 10000
+const val INTERVALO_VIDA_EXTRA = 10000 

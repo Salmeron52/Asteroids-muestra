@@ -56,6 +56,7 @@ class GestorSonido(private val context: Context) {
             idSonidos["thrust"] = pool.load(context, R.raw.thrust, 1)
             idSonidos["beat1"] = pool.load(context, R.raw.thumplo, 1)
             idSonidos["beat2"] = pool.load(context, R.raw.thumphi, 1)
+            idSonidos["life"] = pool.load(context, R.raw.life, 1) // Sonido para vida extra
 
             // Sonidos de OVNI - usando los archivos originales de Asteroids
             idSonidos["ovni_grande"] = pool.load(context, R.raw.lsaucer, 1)
