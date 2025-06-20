@@ -80,6 +80,10 @@ class MotorJuego(
     private var tamanoCanvas: Size = Size.Zero
     private val estadoLock = Any() // Objeto para sincronizar el acceso al estado
 
+    // Expone el estado del volumen directamente desde el GestorSonido.
+    // La UI puede observar este estado para reaccionar a los cambios de volumen.
+    val estadoVolumen = gestorSonido.estadoVolumen
+
     // Listas para optimización del bucle, para no crearlas en cada tick
     private val balasAeliminar = mutableSetOf<Bala>()
     private val asteroidesAeliminar = mutableSetOf<Asteroide>()
@@ -186,6 +190,13 @@ class MotorJuego(
                 }
             }
         }
+    }
+
+    /**
+     * Delega la acción de ciclar el volumen al gestor de sonido.
+     */
+    fun ciclarVolumen() {
+        gestorSonido.ciclarVolumen()
     }
 
     // Este es el corazón del motor. Se llamará en cada fotograma.

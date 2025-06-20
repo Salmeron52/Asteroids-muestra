@@ -3,6 +3,17 @@ package com.buenhijogames.asteroid
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
+import androidx.compose.runtime.mutableStateOf
+
+/**
+ * Define los diferentes estados de volumen que el usuario puede seleccionar.
+ * Cada estado tiene un nivel de `Float` asociado (0.0f para mudo, 1.0f para máximo).
+ */
+enum class EstadoVolumen(val nivel: Float) {
+    MUTED(0f),
+    HALF(0.5f), // Volumen al 50%
+    FULL(1.0f)  // Volumen al 100%
+}
 
 /**
  * Gestor de Sonido para encapsular la lógica de SoundPool.
@@ -21,6 +32,9 @@ class GestorSonido(private val context: Context) {
     
     // Control para sonidos en loop (como el OVNI)
     private var idSonidoOvniActual: Int? = null
+
+    // El estado del volumen, observable por la UI. Inicia al 50%.
+    var estadoVolumen = mutableStateOf(EstadoVolumen.HALF)
 
     /**
      * Carga todos los sonidos necesarios para el juego en el SoundPool.
@@ -61,8 +75,21 @@ class GestorSonido(private val context: Context) {
      */
     fun reproducirSonido(nombre: String) {
         val idSonido = idSonidos[nombre]
-        idSonido?.let {
-            soundPool?.play(it, 1f, 1f, 1, 0, 1f)
+        val volGlobal = estadoVolumen.value.nivel
+
+        // Aplicamos un multiplicador específico para ciertos sonidos.
+        // El disparo ("fire") sonará a la mitad de volumen que el resto.
+        val multiplicadorEspecifico = when (nombre) {
+            "fire" -> 0.5f
+            else -> 1.0f
+        }
+        
+        val volFinal = volGlobal * multiplicadorEspecifico
+
+        if (volFinal > 0f) { // No reproducir si el volumen final es cero.
+            idSonido?.let {
+                soundPool?.play(it, volFinal, volFinal, 1, 0, 1f)
+            }
         }
     }
 
@@ -70,9 +97,10 @@ class GestorSonido(private val context: Context) {
      * Reproduce un sonido de explosión elegido al azar de los disponibles.
      */
     fun reproducirExplosion() {
-        if (idExplosiones.isNotEmpty()) {
+        val vol = estadoVolumen.value.nivel
+        if (vol > 0f && idExplosiones.isNotEmpty()) {
             val idAleatorio = idExplosiones.random()
-            soundPool?.play(idAleatorio, 1f, 1f, 1, 0, 1f)
+            soundPool?.play(idAleatorio, vol, vol, 1, 0, 1f)
         }
     }
 
@@ -86,10 +114,16 @@ class GestorSonido(private val context: Context) {
         // Primero detenemos cualquier sonido de OVNI que esté sonando
         detenerSonidoOvni()
         
+        val volGlobal = estadoVolumen.value.nivel
+        // Los sonidos de OVNI siempre suenan a la mitad del volumen global.
+        val volFinal = volGlobal * 0.5f
+        
+        // Iniciamos el sonido SIEMPRE para obtener un streamID, incluso si el volumen es 0.
+        // Así podemos volver a subirlo más tarde si el usuario cambia el volumen.
         val idSonido = idSonidos[tipoSonido]
         idSonido?.let {
             // Reproducimos en loop (-1 = loop infinito)
-            idSonidoOvniActual = soundPool?.play(it, 0.8f, 0.8f, 1, -1, 1f)
+            idSonidoOvniActual = soundPool?.play(it, volFinal, volFinal, 1, -1, 1f)
         }
     }
 
@@ -103,6 +137,28 @@ class GestorSonido(private val context: Context) {
         }
     }
 
+    /**
+     * Cambia al siguiente estado de volumen en un ciclo: MUDO -> 50% -> 100% -> MUDO
+     */
+    fun ciclarVolumen() {
+        // Cambia al siguiente estado de volumen en el ciclo.
+        val nuevoEstado = when (estadoVolumen.value) {
+            EstadoVolumen.FULL -> EstadoVolumen.MUTED
+            EstadoVolumen.MUTED -> EstadoVolumen.HALF
+            EstadoVolumen.HALF -> EstadoVolumen.FULL
+        }
+        estadoVolumen.value = nuevoEstado
+
+        // Ahora, actualiza el volumen del sonido del OVNI si está sonando (incluso si está en silencio).
+        idSonidoOvniActual?.let { streamId ->
+            val volGlobal = nuevoEstado.nivel
+            // El OVNI siempre suena a la mitad del volumen global.
+            val volFinal = volGlobal * 0.5f
+
+            // Simplemente ajustamos el volumen del stream existente. SoundPool lo manejará.
+            soundPool?.setVolume(streamId, volFinal, volFinal)
+        }
+    }
 
     /**
      * Libera los recursos de SoundPool para evitar fugas de memoria.

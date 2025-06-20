@@ -272,9 +272,11 @@ fun PantallaJuego() {
                 .background(Color.Black.copy(alpha = 0.4f)), // Fondo semi-transparente
             vidas = estadoUI.vidas.value,
             enPausa = estadoUI.enPausa.value,
+            estadoVolumen = motorJuego.estadoVolumen.value,
             onEmpujeChanged = onEmpujeChanged,
             onDisparo = onDisparo,
-            onPausa = { motorJuego.alternarPausa() }
+            onPausa = { motorJuego.alternarPausa() },
+            onCiclarVolumen = { motorJuego.ciclarVolumen() }
         )
     }
 
@@ -524,9 +526,11 @@ fun PanelControlDerecho(
     modifier: Modifier = Modifier,
     vidas: Int,
     enPausa: Boolean,
+    estadoVolumen: EstadoVolumen,
     onEmpujeChanged: (Boolean) -> Unit,
     onDisparo: () -> Unit,
     onPausa: () -> Unit,
+    onCiclarVolumen: () -> Unit,
 ) {
     Column(
         modifier = modifier
@@ -561,18 +565,37 @@ fun PanelControlDerecho(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Botón de pausa - Solo icono, encima del botón de acelerar
-            IconButton(
-                onClick = onPausa
-            ) {
-                Icon(
-                    painter = painterResource(
-                        id = if (enPausa) R.drawable.play_arrow_ico else R.drawable.pause_ico
-                    ),
-                    contentDescription = if (enPausa) "Reanudar" else "Pausar",
-                    tint = Color.White,
-                    modifier = Modifier.size(36.dp)
-                )
+            // Fila para los botones de icono (Sonido y Pausa)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Botón de Sonido
+                IconButton(onClick = onCiclarVolumen) {
+                    Icon(
+                        painter = painterResource(
+                            id = when (estadoVolumen) {
+                                EstadoVolumen.FULL -> R.drawable.volume_up_ico
+                                EstadoVolumen.HALF -> R.drawable.volume_down_ico
+                                EstadoVolumen.MUTED -> R.drawable.volume_off_ico
+                            }
+                        ),
+                        contentDescription = "Controlar Volumen",
+                        tint = Color.Unspecified, // Para usar los colores del PNG y no aplicar tinte.
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Botón de Pausa
+                IconButton(onClick = onPausa) {
+                    Icon(
+                        painter = painterResource(
+                            id = if (enPausa) R.drawable.play_arrow_ico else R.drawable.pause_ico
+                        ),
+                        contentDescription = if (enPausa) "Reanudar" else "Pausar",
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(16.dp))
             BotonControl(
@@ -805,6 +828,7 @@ fun JuegoMenuOverlay(motorJuego: MotorJuego, onMostrarRecords: () -> Unit) {
                 }
             }
         }
+
         else -> { /* No se muestra nada si está JUGANDO */
         }
     }
