@@ -6,8 +6,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,6 +32,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -45,10 +49,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -57,13 +64,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import com.buenhijogames.asteroid.ui.theme.AsteroidTheme
 import kotlin.random.Random
+import androidx.compose.ui.viewinterop.AndroidView
 
 // Las constantes de jugabilidad se han movido a su propio archivo: Constantes.kt
 // Ya no son necesarias aquí.
@@ -229,11 +237,21 @@ fun PantallaJuego(motorJuego: MotorJuego) {
     val estadoUI = motorJuego.estado
 
     var mostrandoRecords by remember { mutableStateOf(false) }
+    var mostrarSliderVolumen by remember { mutableStateOf(false) }
+
+    val onBotonVolumenClick: () -> Unit = {
+        val seraVisible = !mostrarSliderVolumen
+        mostrarSliderVolumen = seraVisible
+        // Si vamos a mostrar el slider y el juego no está en pausa, lo pausamos.
+        if (seraVisible && !estadoUI.enPausa.value) {
+            motorJuego.alternarPausa()
+        }
+    }
 
     DisposableEffect(Unit) {
         motorJuego.iniciar()
         onDispose {
-            motorJuego.liberarRecursos()
+            // motorJuego.liberarRecursos() // Se gestiona en el onDestroy de la Activity
         }
     }
 
@@ -262,62 +280,96 @@ fun PantallaJuego(motorJuego: MotorJuego) {
             canvasWidth = gameHeight * ratioJuego
         }
 
+        val haySolapamiento = canvasWidth > gameWidth - (120.dp * 2)
+
         val onHiperespacio: () -> Unit = { motorJuego.ejecutarHiperespacio() }
         val onDisparo: () -> Unit = { motorJuego.disparar() }
         val onGiroChanged: (Float) -> Unit =
             { nuevoAngulo -> motorJuego.establecerRotacionNave(nuevoAngulo) }
         val onEmpujeChanged: (Boolean) -> Unit = { motorJuego.establecerEmpujeNave(it) }
 
-        // 2. Área de Juego Principal (Lienzo), siempre centrada
+        val density = LocalDensity.current
+        val widthInPx = with(density) { canvasWidth.toPx() }
+        val heightInPx = with(density) { canvasHeight.toPx() }
+
+        // El orden aquí define el eje Z (lo último se dibuja encima)
+
+        // 1. El canvas del juego, en el fondo
+        AndroidView(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(width = canvasWidth, height = canvasHeight),
+            factory = { context ->
+                // La factory solo crea la vista. Los límites se establecen en el update.
+                JuegoSurfaceView(context, motorJuego)
+            },
+            update = {
+                motorJuego.establecerLimites(widthInPx, heightInPx)
+            }
+        )
+        // Superposición de textos (record, nivel, pausa), se escala con el juego
         Box(
             modifier = Modifier
                 .size(canvasWidth, canvasHeight)
                 .align(Alignment.Center) // Centramos el juego en el espacio disponible
         ) {
-            val density = LocalDensity.current
-            AndroidView(
-                factory = { ctx -> JuegoSurfaceView(ctx, motorJuego) },
-                update = { view ->
-                    val widthInPx = with(density) { canvasWidth.toPx() }
-                    val heightInPx = with(density) { canvasHeight.toPx() }
-                    motorJuego.establecerLimites(widthInPx, heightInPx)
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-
-            // Superposición de textos (record, nivel, pausa), se escala con el juego
             JuegoInfoOverlay(motorJuego)
             // Superposición de menús (Game Over, Nuevo Récord)
             JuegoMenuOverlay(motorJuego, onMostrarRecords = { mostrandoRecords = true })
         }
 
 
-        // 3. Paneles de control, anclados a los lados de la pantalla
-        // Se superpondrán sobre el juego en pantallas estrechas
-        PanelControlIzquierdo(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
+        // 2. Capa superpuesta para cerrar el slider de volumen al tocar fuera.
+        //    Aparece solo cuando el slider es visible.
+        //    Se coloca encima del juego pero detrás de los controles.
+        if (mostrarSliderVolumen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null // Sin efecto visual de click
+                    ) {
+                        mostrarSliderVolumen = false // Oculta el slider al tocar
+                        // Al tocar fuera, si el juego está en pausa, lo reanudamos.
+                        if (estadoUI.enPausa.value) {
+                            motorJuego.alternarPausa()
+                        }
+                    }
+            )
+        }
+
+        // 3. Paneles de control, por encima de todo
+        val panelModifierBase = if (haySolapamiento) {
+            Modifier
                 .fillMaxHeight()
-                .width(120.dp) // Ancho fijo para garantizar usabilidad
-                .background(Color.Black.copy(alpha = 0.4f)), // Fondo semi-transparente
+                .width(120.dp) // Ancho fijo para el panel
+                .background(Color.Black.copy(alpha = 0.4f)) // Fondo semi-transparente
+        } else {
+            Modifier
+                .fillMaxHeight()
+                .width((gameWidth - canvasWidth) / 2) // Ocupa el espacio sobrante
+                .background(Color.Black)
+        }
+
+        PanelControlIzquierdo(
+            modifier = panelModifierBase.align(Alignment.CenterStart),
             puntuacion = estadoUI.puntuacion.value,
-            onGiroChanged = onGiroChanged,
-            onHiperespacio = onHiperespacio
+            onHiperespacio = onHiperespacio,
+            onGiroChanged = onGiroChanged
         )
 
         PanelControlDerecho(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .width(120.dp) // Ancho fijo
-                .background(Color.Black.copy(alpha = 0.4f)), // Fondo semi-transparente
+            modifier = panelModifierBase.align(Alignment.CenterEnd),
             vidas = estadoUI.vidas.value,
             enPausa = estadoUI.enPausa.value,
-            estadoVolumen = motorJuego.estadoVolumen.value,
+            volumenActual = motorJuego.volumenMaestro.value,
+            mostrarSliderVolumen = mostrarSliderVolumen,
             onEmpujeChanged = onEmpujeChanged,
             onDisparo = onDisparo,
             onPausa = { motorJuego.alternarPausa() },
-            onCiclarVolumen = { motorJuego.ciclarVolumen() }
+            onBotonVolumenClick = onBotonVolumenClick,
+            onVolumenChanged = { nuevoVolumen -> motorJuego.setVolumen(nuevoVolumen) }
         )
     }
 
@@ -527,8 +579,8 @@ fun VistaPreviaPantallaJuego() {
 fun PanelControlIzquierdo(
     modifier: Modifier = Modifier,
     puntuacion: Int,
-    onGiroChanged: (Float) -> Unit,
     onHiperespacio: () -> Unit,
+    onGiroChanged: (Float) -> Unit,
 ) {
     Column(
         modifier = modifier
@@ -569,18 +621,18 @@ fun PanelControlDerecho(
     modifier: Modifier = Modifier,
     vidas: Int,
     enPausa: Boolean,
-    estadoVolumen: EstadoVolumen,
+    volumenActual: Float,
+    mostrarSliderVolumen: Boolean,
     onEmpujeChanged: (Boolean) -> Unit,
     onDisparo: () -> Unit,
     onPausa: () -> Unit,
-    onCiclarVolumen: () -> Unit,
+    onBotonVolumenClick: () -> Unit,
+    onVolumenChanged: (Float) -> Unit,
 ) {
     Column(
         modifier = modifier
-            .fillMaxHeight()
-            .width(120.dp) // Ancho fijo para el panel
-            .background(Color.Black.copy(alpha = 0.5f)) // Fondo semi-transparente
-            .padding(8.dp),
+            .fillMaxSize()
+            .padding(vertical = 16.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
@@ -633,20 +685,63 @@ fun PanelControlDerecho(
                 horizontalArrangement = Arrangement.Center,
                 modifier = Modifier.padding(bottom = 16.dp)
             ) {
-                // Botón de Volumen
-                IconButton(onClick = onCiclarVolumen) {
-                    val iconoVolumen = when (estadoVolumen) {
-                        EstadoVolumen.MUTED -> R.drawable.volume_off_ico
-                        EstadoVolumen.HALF -> R.drawable.volume_down_ico
-                        EstadoVolumen.FULL -> R.drawable.volume_up_ico
-                    }
-                    Icon(
-                        painter = painterResource(id = iconoVolumen),
-                        contentDescription = "Control de Volumen",
-                        tint = Color.Unspecified,
-                        modifier = Modifier.size(48.dp)
+                // Contenedor para el botón de volumen y el slider
+                // Lo hacemos clickable para "consumir" el click y que no se propague
+                // a la capa trasera que cierra el slider.
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {}
                     )
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Botón de Volumen
+                        IconButton(onClick = onBotonVolumenClick) {
+                            val iconoVolumen = when {
+                                volumenActual == 0f -> R.drawable.volume_off_ico
+                                volumenActual < 0.6f -> R.drawable.volume_down_ico
+                                else -> R.drawable.volume_up_ico
+                            }
+                            Icon(
+                                painter = painterResource(id = iconoVolumen),
+                                contentDescription = "Control de Volumen",
+                                tint = Color.Unspecified,
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
+
+                        // El Slider de volumen, solo visible cuando se activa
+                        if (mostrarSliderVolumen) {
+                            Slider(
+                                value = volumenActual,
+                                onValueChange = onVolumenChanged,
+                                modifier = Modifier
+                                    .height(150.dp) // La altura del slider será el "largo"
+                                    .graphicsLayer {
+                                        rotationZ = 270f
+                                        transformOrigin = TransformOrigin(0.5f, 0.5f)
+                                    }
+                                    .layout { measurable, constraints ->
+                                        val placeable = measurable.measure(
+                                            // Usamos un nuevo objeto Constraints para evitar el error
+                                            Constraints(maxWidth = constraints.maxHeight)
+                                        )
+                                        layout(placeable.height, placeable.width) {
+                                            placeable.place(-placeable.width / 2 + placeable.height / 2, -placeable.height / 2 + placeable.width / 2)
+                                        }
+                                    },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = Color.White,
+                                    inactiveTrackColor = Color.Gray
+                                )
+                            )
+                        }
+                    }
                 }
+
 
                 Spacer(modifier = Modifier.width(8.dp))
 
@@ -675,7 +770,7 @@ fun PanelControlDerecho(
             BotonControl(
                 texto = "DISPARAR",
                 onPress = onDisparo,
-                onRelease = { /* No hace nada al soltar */ }
+                onRelease = { /* No es una acción continua, no hace nada al soltar */ }
             )
         }
     }
@@ -704,7 +799,7 @@ fun PantallaRecords(
             Spacer(modifier = Modifier.height(16.dp))
             LazyColumn(
                 modifier = Modifier
-                    .weight(1f)
+                .weight(1f)
                     .fillMaxWidth()
             ) {
                 itemsIndexed(records) { index, record ->

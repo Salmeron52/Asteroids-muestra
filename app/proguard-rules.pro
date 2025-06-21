@@ -68,7 +68,7 @@
 
 # Para clases anotadas con @Serializable
 -keep,allowobfuscation @kotlinx.serialization.Serializable class * {
-  *** Companion;
+  * Companion;
 }
 -keepclassmembers class * {
     @kotlinx.serialization.Serializable <fields>;

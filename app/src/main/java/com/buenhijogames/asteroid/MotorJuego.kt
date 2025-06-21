@@ -83,7 +83,7 @@ class MotorJuego(
 
     // Expone el estado del volumen directamente desde el GestorSonido.
     // La UI puede observar este estado para reaccionar a los cambios de volumen.
-    val estadoVolumen = gestorSonido.estadoVolumen
+    val volumenMaestro = gestorSonido.volumenMaestro
 
     // Listas para optimización del bucle, para no crearlas en cada tick
     private val balasAeliminar = mutableSetOf<Bala>()
@@ -201,10 +201,11 @@ class MotorJuego(
     }
 
     /**
-     * Delega la acción de ciclar el volumen al gestor de sonido.
+     * Delega el cambio de volumen al gestor de sonido.
+     * @param nuevoVolumen El nuevo nivel de volumen, un Float entre 0.0 y 1.0.
      */
-    fun ciclarVolumen() {
-        gestorSonido.ciclarVolumen()
+    fun setVolumen(nuevoVolumen: Float) {
+        gestorSonido.setVolumen(nuevoVolumen)
     }
 
     // Este es el corazón del motor. Se llamará en cada fotograma.
@@ -775,7 +776,7 @@ private fun comprobarVerticeEnAsteroide(
         puntoX_enEspacioAsteroide * sinAsteroideInv + puntoY_enEspacioAsteroide * cosAsteroideInv
 
     return estaPuntoEnPoligono(puntoFinalX, puntoFinalY, asteroide.vertices)
-}
+} 
 
 const val PUNTUACION_PRIMERA_VIDA_EXTRA = 5000
 const val PUNTUACION_SEGUNDA_VIDA_EXTRA = 10000
