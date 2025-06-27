@@ -78,7 +78,7 @@ class GestorSonido(private val context: Context) {
         val volFinal = volGlobal * multiplicadorEspecifico
 
         if (volFinal > 0f) { // No reproducir si el volumen final es cero.
-            idSonido?.let {
+        idSonido?.let {
                 soundPool?.play(it, volFinal, volFinal, 1, 0, 1f)
             }
         }
