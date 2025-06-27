@@ -93,10 +93,18 @@ class MotorJuego(
     // --- MÉTODOS PÚBLICOS DE CONTROL (API para la UI) ---
 
     fun establecerLimites(width: Float, height: Float) = synchronized(estadoLock) {
-        tamanoCanvas = Size(width, height)
-        estado.nave.posX = width / 2
-        estado.nave.posY = height / 2
-        inicializarNivel()
+        // Solo inicializamos el nivel la PRIMERA VEZ que se establecen los límites.
+        // Esto evita que el juego se reinicie en cada recomposición (ej. al girar la pantalla).
+        if (tamanoCanvas == Size.Zero) {
+            tamanoCanvas = Size(width, height)
+            estado.nave.posX = width / 2
+            estado.nave.posY = height / 2
+            inicializarNivel()
+        } else {
+            // En llamadas posteriores, solo actualizamos el tamaño. La lógica de "wrapping"
+            // del juego se encargará de mantener los objetos dentro de los nuevos límites.
+            tamanoCanvas = Size(width, height)
+        }
     }
 
     fun establecerEmpujeNave(activo: Boolean) = synchronized(estadoLock) {

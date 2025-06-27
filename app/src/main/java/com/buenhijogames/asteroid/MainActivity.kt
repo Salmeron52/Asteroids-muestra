@@ -72,6 +72,8 @@ import androidx.core.view.WindowCompat
 import com.buenhijogames.asteroid.ui.theme.AsteroidTheme
 import kotlin.random.Random
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.viewModels
 
 // Las constantes de jugabilidad se han movido a su propio archivo: Constantes.kt
 // Ya no son necesarias aquí.
@@ -170,17 +172,10 @@ enum class EstadoJuego {
 
 class MainActivity : ComponentActivity() {
 
-    // Atamos la instancia del MotorJuego al ciclo de vida de la Activity.
-    // Se creará de forma perezosa (lazy) la primera vez que se acceda a él.
-    // Esto garantiza que siempre tengamos la misma instancia y que sea accesible
-    // desde los métodos del ciclo de vida como onPause.
-    private val motorJuego: MotorJuego by lazy {
-        val gestorSonido = GestorSonido(this)
-        val gestorPuntuacion = GestorPuntuacion(this)
-        MotorJuego(gestorSonido, gestorPuntuacion)
-    }
-
-    private var isFirstRun = true
+    // Obtenemos una instancia del ViewModel.
+    // El sistema se encarga de crearla la primera vez y de devolver la misma
+    // instancia en futuras recreaciones de la Activity (ej. al girar la pantalla).
+    private val juegoViewModel: JuegoViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -192,8 +187,9 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = Color.Black
                 ) {
-                    // Ahora pasamos directamente la instancia del motor que pertenece a la Activity.
-                    PantallaJuego(motorJuego)
+                    // Pasamos el motor del juego, que ahora vive dentro del ViewModel,
+                    // a nuestra pantalla principal.
+                    PantallaJuego(juegoViewModel.motorJuego)
                 }
             }
         }
@@ -201,24 +197,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        // Ahora podemos llamar a pausarJuego de forma segura, sabiendo que motorJuego nunca es nulo.
-        motorJuego.pausarJuego()
+        // Pausamos el juego a través del ViewModel.
+        juegoViewModel.motorJuego.pausarJuego()
     }
 
     override fun onResume() {
         super.onResume()
-        // Al volver a la app, también forzamos la pausa.
-        // PERO, evitamos hacerlo en el primer arranque de la app.
-        if (!isFirstRun) {
-            motorJuego.pausarJuego()
-        }
-        isFirstRun = false
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        // Liberamos los recursos del gestor de sonido (SoundPool) para evitar fugas de memoria.
-        motorJuego.liberarRecursos()
+        // Delegamos la lógica de reanudación al ViewModel.
+        // Él decidirá si debe pausar el juego o no.
+        juegoViewModel.alReanudarActividad()
     }
 }
 
