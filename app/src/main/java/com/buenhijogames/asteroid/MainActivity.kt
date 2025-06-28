@@ -75,8 +75,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.viewModels
 
-// Las constantes de jugabilidad se han movido a su propio archivo: Constantes.kt
-// Ya no son necesarias aquí.
 
 /**
  * Enum para diferenciar el origen de una bala.
