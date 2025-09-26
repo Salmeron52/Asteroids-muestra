@@ -156,17 +156,6 @@ data class Ovni(
     val sonido: String get() = tipo.sonido
 }
 
-/**
- * Enum para controlar el estado actual del juego.
- */
-// SE ELIMINA ESTE ENUM. AHORA USAMOS `EstadoJuegoEnum` de `MotorJuego.kt`
-/*
-enum class EstadoJuego {
-    JUGANDO,
-    GAME_OVER,
-    NUEVO_RECORD
-}
-*/
 
 class MainActivity : ComponentActivity() {
 
@@ -281,16 +270,6 @@ fun PantallaJuego(motorJuego: MotorJuego) {
 
         // 1. El canvas del juego, en el fondo
         AndroidView(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(width = canvasWidth, height = canvasHeight),
-            factory = { context ->
-                // La factory solo crea la vista. Los límites se establecen en el update.
-                JuegoSurfaceView(context, motorJuego)
-            },
-            update = {
-                motorJuego.establecerLimites(widthInPx, heightInPx)
-            }
         )
         // Superposición de textos (record, nivel, pausa), se escala con el juego
         Box(
@@ -536,27 +515,12 @@ fun BotonPulsacionLarga(
  * Path predefinido para la forma del OVNI.
  */
 val pathOvni = Path().apply {
-    moveTo(-30f, 0f)
-    lineTo(-15f, -15f)
-    lineTo(15f, -15f)
-    lineTo(30f, 0f)
-    lineTo(-30f, 0f)
-    moveTo(-20f, 0f)
-    cubicTo(-10f, 15f, 10f, 15f, 20f, 0f)
 }
 
 @Preview(showBackground = true)
 @Composable
 fun VistaPreviaPantallaJuego() {
     AsteroidTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color.Black
-        ) {
-            // Para la preview, seguimos usando la versión "remember" para que sea autocontenida.
-            val motorJuego = rememberMotorJuego()
-            PantallaJuego(motorJuego)
-        }
     }
 }
 
@@ -629,28 +593,7 @@ fun PanelControlDerecho(
             ) {
                 // 1. Dibujamos UNA SOLA nave como icono. Reducimos el ancho del Canvas para que se ajuste al dibujo.
                 Canvas(modifier = Modifier.size(width = 40.dp, height = 60.dp), onDraw = { // Ancho ajustado
-                    val pathOriginal = Path().apply {
-                        moveTo(0f, -37.5f)
-                        lineTo(-22.5f, 22.5f)
-                        lineTo(22.5f, 22.5f)
-                        close()
-                    }
-
-                    // Creamos un nuevo path transformado para no modificar el original.
-                    val pathTransformado = Path()
-                    // Creamos una matriz de transformación y la escalamos (ajustada al nuevo tamaño del canvas).
-                    val matriz = android.graphics.Matrix()
-                    matriz.setScale(0.8f, 0.8f) // Aumentado al doble
-                    // Aplicamos la transformación al path.
-                    pathOriginal.asAndroidPath().transform(matriz, pathTransformado.asAndroidPath())
-
-                    // Dibujamos el path ya escalado, centrándolo en el canvas.
-                    translate(left = size.width / 2, top = size.height / 2) {
-                        drawPath(path = pathTransformado, color = Color.White, style = Stroke(width = 4f))
-                    }
                 })
-
-                // El Spacer ya no es necesario, el tamaño ajustado del Canvas controla la separación.
 
                 // 2. Mostramos el número de vidas restantes en texto
                 Text(
@@ -700,29 +643,6 @@ fun PanelControlDerecho(
                         // El Slider de volumen, solo visible cuando se activa
                         if (mostrarSliderVolumen) {
                             Slider(
-                                value = volumenActual,
-                                onValueChange = onVolumenChanged,
-                                modifier = Modifier
-                                    .height(150.dp) // La altura del slider será el "largo"
-                                    .graphicsLayer {
-                                        rotationZ = 270f
-                                        transformOrigin = TransformOrigin(0.5f, 0.5f)
-                                    }
-                                    .layout { measurable, constraints ->
-                                        val placeable = measurable.measure(
-                                            // Usamos un nuevo objeto Constraints para evitar el error
-                                            Constraints(maxWidth = constraints.maxHeight)
-                                        )
-                                        layout(placeable.height, placeable.width) {
-                                            placeable.place(-placeable.width / 2 + placeable.height / 2, -placeable.height / 2 + placeable.width / 2)
-                                        }
-                                    },
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.White,
-                                    activeTrackColor = Color.White,
-                                    inactiveTrackColor = Color.Gray
-                                )
-                            )
                         }
                     }
                 }
