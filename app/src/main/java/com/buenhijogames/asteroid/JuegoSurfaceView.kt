@@ -75,32 +75,14 @@ class JuegoSurfaceView(context: Context, private val motorJuego: MotorJuego) : S
             canvas.drawCircle(bala.posX, bala.posY, bala.radio, paintBala)
         }
         // Dibujar Asteroides
-        estadoUI.asteroides.forEach { asteroide ->
-            canvas.save()
-            canvas.translate(asteroide.posX, asteroide.posY)
-            canvas.rotate(asteroide.rotacion)
-            canvas.drawPath(asteroide.path.asAndroidPath(), paint)
+        estadoUI.asteroides.forEach { asteroide ->de.path.asAndroidPath(), paint)
             canvas.restore()
         }
         // Dibujar OVNI
         estadoUI.ovni?.let { o ->
-            canvas.save()
-            canvas.translate(o.posX, o.posY)
-            canvas.drawPath(pathOvni.asAndroidPath(), paint)
-            canvas.restore()
         }
         // Dibujar Nave
-        if (estadoUI.vidas.value > 0) {
-            val esVisible =
-                if (estadoUI.nave.esInvulnerable) (System.currentTimeMillis() / 200) % 2 == 0L else true
-            if (esVisible) {
-                canvas.save()
-                canvas.translate(estadoUI.nave.posX, estadoUI.nave.posY)
-                canvas.rotate(estadoUI.nave.angulo)
-                canvas.drawPath(pathNave, paint)
-                canvas.restore()
-            }
-        }
+        
     }
 }
 
