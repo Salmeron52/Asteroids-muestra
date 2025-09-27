@@ -22,7 +22,6 @@ El objetivo es simple: controlar una nave en un campo de asteroides, destruirlos
     - Dos tipos de OVNIs (grandes y pequeños) con diferentes patrones de ataque y dificultad.
 - **Controles Táctiles:** Paneles de control en pantalla optimizados para dispositivos móviles.
 - **Efectos Visuales y de Sonido:** Explosiones, disparos y sonidos que recrean la atmósfera del juego original.
-- **Modo "Crossroad":** Un modo de juego alternativo donde el movimiento está restringido a una carretera curva generada proceduralmente.
 
 ## Pila Tecnológica
 
