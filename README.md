@@ -11,8 +11,6 @@ Este proyecto reimplementa el icónico juego de arcade, manteniendo su jugabilid
 
 El objetivo es simple: controlar una nave en un campo de asteroides, destruirlos para sumar puntos y sobrevivir el mayor tiempo posible evitando colisiones y el ataque de naves OVNI.
 
-Además del modo clásico, el proyecto está diseñado para soportar un modo de juego alternativo llamado **"Crossroad"**, donde la nave debe navegar por una carretera que se genera proceduralmente, añadiendo un nuevo nivel de desafío.
-
 ## Características
 
 - **Jugabilidad Clásica:** Movimiento con inercia, rotación, aceleración y la habilidad de teletransportarse (hiperespacio).
