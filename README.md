@@ -1,4 +1,4 @@
-# Asteroid - Remake para Android
+# Asteroids - Remake para Android
 
 Un remake moderno del clásico juego de arcade "Asteroids" de 1979, desarrollado nativamente para Android con Kotlin, Jetpack Compose y un motor de renderizado sobre Canvas.
 
